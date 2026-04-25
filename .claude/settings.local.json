@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3 \"D:/AI-Python/BahaiResearchA/app/src/main/assets/corpus.db\" \"SELECT COUNT\\(*\\) FROM passages;\")",
+      "Bash(sqlite3 \"D:/AI-Python/BahaiResearchA/app/src/main/assets/corpus.db\" \"SELECT COUNT\\(*\\) FROM passages_fts_data;\")",
+      "WebFetch(domain:central.sonatype.com)"
+    ]
+  }
+}
