@@ -52,10 +52,27 @@ public class SourceViewerFragment extends DialogFragment {
         Button btnClose = root.findViewById(R.id.btnClose);
 
         webView.getSettings().setJavaScriptEnabled(true);
-        webView.setWebViewClient(new WebViewClient());
 
-        String url = requireArguments().getString(ARG_URL);
-        webView.loadUrl(url);
+        String fullUrl = requireArguments().getString(ARG_URL);
+        int hashIdx = fullUrl.indexOf('#');
+        String baseUrl = hashIdx >= 0 ? fullUrl.substring(0, hashIdx) : fullUrl;
+        String anchor  = hashIdx >= 0 ? fullUrl.substring(hashIdx + 1) : null;
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (anchor != null && !anchor.isEmpty()) {
+                    // Scroll after layout is complete; the fragment URL alone is unreliable
+                    // on large XHTML files because the engine may not have laid out the page yet.
+                    view.evaluateJavascript(
+                            "var el=document.getElementById('" + anchor + "');" +
+                            "if(el) el.scrollIntoView({block:'center'});",
+                            null);
+                }
+            }
+        });
+
+        webView.loadUrl(baseUrl);
 
         btnClose.setOnClickListener(v -> dismiss());
         return root;
