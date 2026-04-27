@@ -1,5 +1,8 @@
 package com.bahairesearch.android.config;
 
+/**
+ * Immutable configuration for a corpus search session.
+ */
 public final class AppConfig {
     private final String noResultsText;
     private final boolean debugIntent;
@@ -13,6 +16,9 @@ public final class AppConfig {
         this.minPassageLength = minPassageLength;
     }
 
+    /**
+     * Returns the default configuration used for a standard search session.
+     */
     public static AppConfig defaults() {
         return new AppConfig("No results found.", false, 12, 80);
     }

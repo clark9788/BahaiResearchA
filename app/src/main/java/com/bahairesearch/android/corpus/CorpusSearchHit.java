@@ -1,5 +1,8 @@
 package com.bahairesearch.android.corpus;
 
+/**
+ * Raw FTS5 search hit returned from the database before post-processing and ranking.
+ */
 final class CorpusSearchHit {
     private final String quote;
     private final String author;

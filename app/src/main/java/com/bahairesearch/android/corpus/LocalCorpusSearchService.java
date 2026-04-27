@@ -19,6 +19,9 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Full-text search against the corpus database: FTS5 retrieval, filtering, ranking, and deduplication.
+ */
 public final class LocalCorpusSearchService {
 
     private static final String TAG = "Corpus";
@@ -34,6 +37,8 @@ public final class LocalCorpusSearchService {
         }
     }
 
+    private static final int NEAR_DISTANCE = 15;
+
     private static final Set<String> NOISE_TOKENS = new HashSet<>(Arrays.asList(
             "by", "for", "with", "and", "the", "from", "about",
             "quotes", "quote", "please", "show", "find"));
@@ -42,10 +47,16 @@ public final class LocalCorpusSearchService {
 
     private LocalCorpusSearchService() {}
 
+    /**
+     * Searches the corpus for the given topic with no author or title filter.
+     */
     public static ResearchReport search(SQLiteDatabase db, String topic, AppConfig appConfig) {
         return search(db, topic, null, null, appConfig);
     }
 
+    /**
+     * Searches the corpus for the given topic, optionally scoped to a specific author and title.
+     */
     public static ResearchReport search(
             SQLiteDatabase db,
             String topic,
@@ -53,9 +64,9 @@ public final class LocalCorpusSearchService {
             String explicitTitle,
             AppConfig appConfig
     ) {
-        boolean hasExplicitAuthor = explicitAuthor != null && !explicitAuthor.trim().isEmpty();
-        String requiredAuthor = hasExplicitAuthor ? explicitAuthor : inferRequiredAuthor(topic);
+        String requiredAuthor = explicitAuthor;
 
+        String nearQuery  = toFtsQueryNear(topic, requiredAuthor);
         String ftsQuery   = toFtsQuery(topic, requiredAuthor);
         String orFtsQuery = toFtsQueryOr(topic, requiredAuthor);
         if (ftsQuery.trim().isEmpty()) {
@@ -65,10 +76,10 @@ public final class LocalCorpusSearchService {
         int requestedQuotes  = Math.max(1, appConfig.maxQuotes());
         int retrievalPoolSize = Math.max(requestedQuotes * 12, 60);
 
-        List<String> requestedBookTokens = mergeBookTokens(topic, requiredAuthor, explicitTitle, null);
-        List<String> conceptTerms        = inferEffectiveConceptTerms(topic, requiredAuthor, null);
+        List<String> requestedBookTokens = bookTokensFromTitle(explicitTitle);
+        List<String> conceptTerms        = extractContentTerms(topic, requiredAuthor);
 
-        HitsResult hitsResult = findHits(db, ftsQuery, orFtsQuery, retrievalPoolSize,
+        HitsResult hitsResult = findHits(db, nearQuery, ftsQuery, orFtsQuery, retrievalPoolSize,
                 requiredAuthor, explicitTitle, requestedBookTokens, appConfig);
         List<CorpusSearchHit> hits = hitsResult.hits;
         logCount(appConfig, "hits", hits.size());
@@ -79,7 +90,8 @@ public final class LocalCorpusSearchService {
 
         List<String> topicFtsTokens = extractFtsTokens(topic, requiredAuthor);
         List<CorpusSearchHit> combinedPhraseHits = new ArrayList<>();
-        if (topicFtsTokens.size() >= 2) {
+        boolean nearFired = hitsResult.effectiveQuery.startsWith("NEAR(");
+        if (topicFtsTokens.size() >= 2 && !nearFired) {
             combinedPhraseHits.addAll(fetchPhraseHits(db, topic, retrievalPoolSize,
                     requiredAuthor, explicitTitle, requestedBookTokens));
             logCount(appConfig, "phrase hits", combinedPhraseHits.size());
@@ -95,7 +107,7 @@ public final class LocalCorpusSearchService {
         }
 
         List<CorpusSearchHit> candidatePool =
-                rankForDisplay(removeBoilerplateAndDuplicates(topical), requiredAuthor);
+                rankForDisplay(removeBoilerplateAndDuplicates(topical));
         logCount(appConfig, "candidatePool", candidatePool.size());
 
         List<CorpusSearchHit> curated = candidatePool.stream()
@@ -116,6 +128,7 @@ public final class LocalCorpusSearchService {
         }
 
         String displayQuery = hitsResult.effectiveQuery
+                .replaceAll("NEAR\\(([^,]+),\\s*\\d+\\)", "$1")
                 .replace("*", "")
                 .replace(" AND ", " and ")
                 .replace(" OR ", " or ");
@@ -184,11 +197,11 @@ public final class LocalCorpusSearchService {
     }
 
     // -------------------------------------------------------------------------
-    // Core search — findHits with AND/OR fallback
+    // Core search — findHits with NEAR/AND/OR fallback
     // -------------------------------------------------------------------------
 
     private static HitsResult findHits(
-            SQLiteDatabase db, String ftsQuery, String orFtsQuery, int limit,
+            SQLiteDatabase db, String nearQuery, String ftsQuery, String orFtsQuery, int limit,
             String requiredAuthor, String explicitTitle,
             List<String> requestedBookTokens, AppConfig appConfig) {
 
@@ -196,10 +209,23 @@ public final class LocalCorpusSearchService {
         boolean titleScoped  = !isEmpty(explicitTitle);
         String sql = buildHitsSql(authorScoped, titleScoped);
 
-        logCount(appConfig, "FtsQuery AND: " + ftsQuery + " ->", 0);
-        List<CorpusSearchHit> hits = executeHitsQuery(db, sql, ftsQuery,
-                authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
-        logCount(appConfig, "AND hits", hits.size());
+        List<CorpusSearchHit> hits = Collections.emptyList();
+        String usedQuery = ftsQuery;
+
+        if (!isEmpty(nearQuery)) {
+            logCount(appConfig, "FtsQuery NEAR: " + nearQuery + " ->", 0);
+            hits = executeHitsQuery(db, sql, nearQuery,
+                    authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
+            logCount(appConfig, "NEAR hits", hits.size());
+            if (!hits.isEmpty()) usedQuery = nearQuery;
+        }
+
+        if (hits.isEmpty()) {
+            logCount(appConfig, "FtsQuery AND: " + ftsQuery + " ->", 0);
+            hits = executeHitsQuery(db, sql, ftsQuery,
+                    authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
+            logCount(appConfig, "AND hits", hits.size());
+        }
 
         boolean usedOrFallback = false;
         if (hits.isEmpty() && !isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
@@ -208,17 +234,17 @@ public final class LocalCorpusSearchService {
                     authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
             logCount(appConfig, "OR hits", hits.size());
             usedOrFallback = true;
+            usedQuery = orFtsQuery;
         }
 
         if (!requestedBookTokens.isEmpty()) {
             hits = filterByRequestedBook(hits, requestedBookTokens);
         }
 
-        String effectiveQuery = usedOrFallback ? orFtsQuery : ftsQuery;
         List<CorpusSearchHit> limited = hits.stream()
                 .limit(Math.max(1, limit))
                 .collect(Collectors.toList());
-        return new HitsResult(limited, effectiveQuery, usedOrFallback);
+        return new HitsResult(limited, usedQuery, usedOrFallback);
     }
 
     private static List<CorpusSearchHit> executeHitsQuery(
@@ -393,8 +419,7 @@ public final class LocalCorpusSearchService {
         return curated;
     }
 
-    private static List<CorpusSearchHit> rankForDisplay(
-            List<CorpusSearchHit> hits, String requiredAuthor) {
+    private static List<CorpusSearchHit> rankForDisplay(List<CorpusSearchHit> hits) {
         return hits.stream()
                 .sorted((l, r) -> {
                     boolean lPhrase = l.score() <= -99990;
@@ -405,29 +430,12 @@ public final class LocalCorpusSearchService {
                         int rLen = r.quote() == null ? 0 : r.quote().length();
                         return Integer.compare(lLen, rLen);
                     }
-                    int lp = sourcePriority(l, requiredAuthor);
-                    int rp = sourcePriority(r, requiredAuthor);
-                    if (lp != rp) return Integer.compare(lp, rp);
                     int lb = qualityBand(l.quote());
                     int rb = qualityBand(r.quote());
                     if (lb != rb) return Integer.compare(lb, rb);
                     return Double.compare(l.score(), r.score());
                 })
                 .collect(Collectors.toList());
-    }
-
-    private static int sourcePriority(CorpusSearchHit hit, String requiredAuthor) {
-        String na = normalizeForMatch(requiredAuthor);
-        String nt = normalizeForMatch(hit.title());
-        String nu = normalizeForMatch(hit.sourceUrl());
-        if (!"universal house of justice".equals(na)) return 1;
-        if (nu.contains("the universal house of justice messages")
-                || nu.contains("the universal house of justice muhj")
-                || nt.contains("messages from the universal house of justice")) return 0;
-        if (nu.contains("authoritative texts compilations")
-                || nu.contains("other literature")
-                || nu.contains("official statements commentaries")) return 3;
-        return 1;
     }
 
     private static int qualityBand(String quote) {
@@ -476,117 +484,27 @@ public final class LocalCorpusSearchService {
         return terms;
     }
 
-    private static List<String> inferEffectiveConceptTerms(
-            String topic, String requiredAuthor, List<String> aiConcepts) {
-        List<String> terms = new ArrayList<>(extractContentTerms(topic, requiredAuthor));
-        if (aiConcepts != null) {
-            for (String concept : aiConcepts) {
-                for (String token : normalizeForMatch(concept).split("\\s+")) {
-                    if (token.length() >= 4
-                            && !NOISE_TOKENS.contains(token)
-                            && !GENERIC_QUERY_TOKENS.contains(token)
-                            && !terms.contains(token)) {
-                        terms.add(token);
-                    }
-                }
-            }
-        }
-        return terms;
-    }
-
-    private static List<String> inferRequestedBookTokens(String topic, String requiredAuthor) {
-        String normalizedTopic = normalizeForMatch(topic);
-        if (normalizedTopic.isEmpty()) return Collections.emptyList();
-        String segment = "";
-        int inBookIndex = normalizedTopic.indexOf(" in book ");
-        if (inBookIndex >= 0) {
-            segment = normalizedTopic.substring(inBookIndex + " in book ".length());
-        } else {
-            int fromIndex = normalizedTopic.indexOf(" from ");
-            if (fromIndex >= 0) segment = normalizedTopic.substring(fromIndex + " from ".length());
-        }
-        if (segment.isEmpty() || startsWithAuthorAlias(segment)) return Collections.emptyList();
-        int byIndex = segment.indexOf(" by ");
-        if (byIndex >= 0) segment = segment.substring(0, byIndex);
-        Set<String> authorTerms = new HashSet<>();
-        if (!isEmpty(requiredAuthor)) {
-            for (String token : normalizeForMatch(requiredAuthor).split("\\s+")) {
-                if (!token.isEmpty()) authorTerms.add(token);
-            }
-        }
-        List<String> bookTokens = new ArrayList<>();
-        for (String token : segment.split("\\s+")) {
-            if (token.length() < 3) continue;
-            if (NOISE_TOKENS.contains(token) || GENERIC_QUERY_TOKENS.contains(token)
-                    || authorTerms.contains(token)) continue;
-            bookTokens.add(token);
-        }
-        return bookTokens;
-    }
-
-    private static boolean startsWithAuthorAlias(String segment) {
-        String n = normalizeForMatch(segment);
-        return n.startsWith("uhj")
-                || n.startsWith("universal house of justice")
-                || n.startsWith("house of justice")
-                || n.startsWith("shoghi effendi")
-                || n.startsWith("bahaullah")
-                || n.startsWith("baha u llah")
-                || n.startsWith("abdul baha")
-                || n.startsWith("abdu l baha");
-    }
-
-    private static List<String> inferEffectiveBookTokens(
-            String topic, String requiredAuthor, String aiWorkTitle) {
-        List<String> manualTokens = inferRequestedBookTokens(topic, requiredAuthor);
-        if (manualTokens.isEmpty()) return Collections.emptyList();
-        if (isEmpty(aiWorkTitle)) return manualTokens;
-        Set<String> merged = new LinkedHashSet<>(manualTokens);
-        for (String token : normalizeForMatch(aiWorkTitle).split("\\s+")) {
-            if (token.length() >= 3 && !NOISE_TOKENS.contains(token)
-                    && !GENERIC_QUERY_TOKENS.contains(token)) {
-                merged.add(token);
-            }
-        }
-        return new ArrayList<>(merged);
-    }
-
-    private static List<String> mergeBookTokens(
-            String topic, String requiredAuthor, String explicitTitle, String aiWorkTitle) {
-        List<String> base = inferEffectiveBookTokens(topic, requiredAuthor, aiWorkTitle);
-        if (isEmpty(explicitTitle)) return base;
-        Set<String> merged = new LinkedHashSet<>(base);
+    private static List<String> bookTokensFromTitle(String explicitTitle) {
+        if (isEmpty(explicitTitle)) return Collections.emptyList();
+        List<String> tokens = new ArrayList<>();
         for (String token : normalizeForMatch(explicitTitle).split("\\s+")) {
             if (token.length() >= 3 && !NOISE_TOKENS.contains(token)
                     && !GENERIC_QUERY_TOKENS.contains(token)) {
-                merged.add(token);
+                tokens.add(token);
             }
         }
-        return new ArrayList<>(merged);
-    }
-
-    // -------------------------------------------------------------------------
-    // Author resolution
-    // -------------------------------------------------------------------------
-
-    private static String inferRequiredAuthor(String topic) {
-        String normalized = normalizeForMatch(topic);
-        String padded = " " + normalized + " ";
-        if (padded.contains(" universal house of justice ")
-                || padded.contains(" house of justice ")
-                || padded.contains(" uhj "))             return "Universal House of Justice";
-        if (padded.contains(" baha u llah ")
-                || padded.contains(" bahaullah "))        return "Baha'u'llah";
-        if (padded.contains(" abdu l baha ")
-                || padded.contains(" abdu baha "))        return "'Abdu'l-Baha";
-        if (padded.contains(" shoghi effendi "))          return "Shoghi Effendi";
-        if (padded.contains(" bab "))                     return "Bab";
-        return null;
+        return tokens;
     }
 
     // -------------------------------------------------------------------------
     // FTS query building
     // -------------------------------------------------------------------------
+
+    private static String toFtsQueryNear(String topic, String resolvedAuthor) {
+        List<String> tokens = extractFtsTokens(topic, resolvedAuthor);
+        if (tokens.size() != 2) return "";
+        return "NEAR(" + tokens.get(0) + " " + tokens.get(1) + ", " + NEAR_DISTANCE + ")";
+    }
 
     private static String toFtsQuery(String topic, String resolvedAuthor) {
         List<String> tokens = extractFtsTokens(topic, resolvedAuthor);

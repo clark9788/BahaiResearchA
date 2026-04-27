@@ -1,5 +1,8 @@
 package com.bahairesearch.android.model;
 
+/**
+ * A single passage result returned to the UI, including attribution fields.
+ */
 public final class QuoteResult {
     private final String quote;
     private final String author;

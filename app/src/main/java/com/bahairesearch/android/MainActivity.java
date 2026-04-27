@@ -30,6 +30,9 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Main screen: author/title filters, keyword search entry, and ranked passage results.
+ */
 public class MainActivity extends AppCompatActivity {
 
     private static final String ALL_AUTHORS = "All Authors";

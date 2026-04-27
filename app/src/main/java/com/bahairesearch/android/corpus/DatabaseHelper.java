@@ -9,6 +9,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/**
+ * Handles first-launch copy of the bundled corpus database from assets and opens it read-only.
+ */
 public final class DatabaseHelper {
 
     private static final String DB_NAME = "corpus.db";
@@ -17,8 +20,7 @@ public final class DatabaseHelper {
     private DatabaseHelper() {}
 
     /**
-     * Copy DB from assets to internal storage on first launch.
-     * Must be called on a background thread — 35 MB copy takes a few seconds.
+     * Copies the corpus database from assets to internal storage if not already present.
      */
     public static void copyIfNeeded(Context context) throws IOException {
         File dbFile = context.getDatabasePath(DB_NAME);
@@ -39,6 +41,9 @@ public final class DatabaseHelper {
         }
     }
 
+    /**
+     * Opens the corpus database read-only from internal storage.
+     */
     public static SQLiteDatabase open(Context context) {
         File dbFile = context.getDatabasePath(DB_NAME);
         return SQLiteDatabase.openDatabase(

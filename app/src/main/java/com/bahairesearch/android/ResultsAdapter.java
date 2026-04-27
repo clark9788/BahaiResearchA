@@ -17,6 +17,9 @@ import com.bahairesearch.android.model.QuoteResult;
 
 import java.util.List;
 
+/**
+ * RecyclerView adapter that displays ranked passage results with author/title attribution.
+ */
 public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHolder> {
 
     private List<QuoteResult> results;
@@ -25,6 +28,9 @@ public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHold
         this.results = results;
     }
 
+    /**
+     * Replaces the current result list and refreshes the RecyclerView.
+     */
     public void setResults(List<QuoteResult> results) {
         this.results = results;
         notifyDataSetChanged();
