@@ -3,6 +3,8 @@ package com.bahairesearch.android;
 import android.database.Cursor;
 import io.requery.android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
+
+import com.bahairesearch.android.model.QuoteResult;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -62,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
         tvStatus      = findViewById(R.id.tvStatus);
 
         RecyclerView recycler = findViewById(R.id.recyclerResults);
-        adapter = new ResultsAdapter(Collections.emptyList());
+        adapter = new ResultsAdapter(Collections.emptyList(), this::openSource);
         recycler.setLayoutManager(new LinearLayoutManager(this));
         recycler.setAdapter(adapter);
 
@@ -204,6 +206,25 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
+    }
+
+    // -------------------------------------------------------------------------
+    // Source viewer
+    // -------------------------------------------------------------------------
+
+    private void openSource(QuoteResult result) {
+        String canonical = result.sourceUrl();
+        if (canonical == null || !canonical.endsWith(".xhtml")) return;
+
+        String locator = result.paragraphOrPage();
+        boolean hasAnchor = locator != null && !locator.isEmpty()
+                && !locator.equals("Not specified");
+
+        String url = "file:///android_asset/" + canonical
+                + (hasAnchor ? "#" + locator : "");
+
+        SourceViewerFragment.newInstance(url)
+                .show(getSupportFragmentManager(), "source");
     }
 
     // -------------------------------------------------------------------------

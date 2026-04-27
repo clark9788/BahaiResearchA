@@ -22,10 +22,17 @@ import java.util.List;
  */
 public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHolder> {
 
-    private List<QuoteResult> results;
+    /** Callback for the "Open source" long-press menu action. */
+    public interface OnOpenSourceListener {
+        void onOpenSource(QuoteResult result);
+    }
 
-    public ResultsAdapter(List<QuoteResult> results) {
+    private List<QuoteResult> results;
+    private final OnOpenSourceListener openSourceListener;
+
+    public ResultsAdapter(List<QuoteResult> results, OnOpenSourceListener openSourceListener) {
         this.results = results;
+        this.openSourceListener = openSourceListener;
     }
 
     /**
@@ -64,7 +71,16 @@ public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHold
         PopupMenu popup = new PopupMenu(anchor.getContext(), anchor);
         popup.getMenu().add(0, 1, 0, "Copy passage");
         popup.getMenu().add(0, 2, 1, "Copy with citation");
+        boolean hasXhtmlSource = result.sourceUrl() != null
+                && result.sourceUrl().endsWith(".xhtml");
+        if (hasXhtmlSource) {
+            popup.getMenu().add(0, 3, 2, "Open source");
+        }
         popup.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 3) {
+                if (openSourceListener != null) openSourceListener.onOpenSource(result);
+                return true;
+            }
             String text = (item.getItemId() == 1)
                     ? result.quote()
                     : result.quote() + "\n— " + result.author() + ", " + result.bookTitle();
