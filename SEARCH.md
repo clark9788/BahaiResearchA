@@ -1,4 +1,4 @@
-# Search Logic — Bahá'í Research
+ # Search Logic — Bahá'í Research
 
 This document describes the full search pipeline in `LocalCorpusSearchService.java`. It is intended as a reference for understanding, testing, and improving search quality.
 
@@ -15,7 +15,7 @@ The search pipeline runs entirely offline against `corpus.db`, a bundled SQLite 
 The pipeline has six stages:
 
 ```
-Input → Tokenize & Build FTS Query → FTS5 Retrieval (NEAR → AND → OR fallback)
+Input → Tokenize & Build FTS Query → FTS5 Retrieval (NEAR+AND merge → OR fallback)
      → Post-Retrieval Filtering → Phrase Merge → Deduplication & Ranking → Output
 ```
 
@@ -31,6 +31,8 @@ All text matching throughout the pipeline runs through `normalizeForMatch()`:
 
 This means `Bahá'u'lláh`, `Baha'u'llah`, and `bahaullah` all normalize to `baha u llah` and match identically. The same normalization is applied to query text, passage text, author names, and title names before any comparison.
 
+**Note:** FTS token extraction now also uses `normalizeForMatch()` so that diacritics are stripped *before* building FTS5 queries. This ensures that a search for `"Bahá'u'lláh"` generates the same FTS token as `"bahaullah"` — consistent with every other pipeline comparison.
+
 ---
 
 ## Stage 2: Author Resolution
@@ -45,10 +47,10 @@ The required author comes directly from the author spinner. If the user selects 
 
 `extractFtsTokens()` processes the user's input into a list of FTS5 search tokens:
 
-1. Split on non-alphanumeric characters (removes punctuation, apostrophes, spaces)
+1. Normalize via `normalizeForMatch()` (NFD → lowercase → strip non-alphanumeric)
 2. Discard tokens shorter than 3 characters
 3. Discard **noise tokens**: `by for with and the from about quotes quote please show find`
-4. Discard **generic tokens**: `book books most issue issues`
+4. Discard **generic tokens**: `book books most issue issues` (applied in `extractContentTerms`, but tokens are already dropped at extraction)
 5. Discard any token that appears in the resolved author's name
 6. Append `*` (prefix wildcard) to each remaining token
 7. Deduplicate while preserving order
@@ -59,7 +61,7 @@ The required author comes directly from the author spinner. If the user selects 
 **Example:** `"unity mankind service"`
 → tokens: `["unity*", "mankind*", "service*"]`
 
-### NEAR query (primary — 2-token queries only)
+### NEAR + AND merged (2-token queries)
 
 `toFtsQueryNear()` produces a proximity query when the user enters exactly 2 search tokens:
 
@@ -67,9 +69,18 @@ The required author comes directly from the author spinner. If the user selects 
 NEAR(divine* intervention*, NEAR_DISTANCE)
 ```
 
-Both tokens must appear within 15 (Default) words of each other. This prevents false positives where the two words match independently in unrelated parts of a long passage (e.g. "divines" near the top and "intervention" near the bottom). If NEAR returns zero results, the pipeline falls through to the AND query automatically.
+Both tokens must appear within 15 words of each other. This prevents false positives where the two words match independently in unrelated parts of a long passage.
 
-### AND query (primary for 3+ tokens, fallback for 2-token)
+Unlike the original design where NEAR ran alone (bypassing AND entirely), the improved pipeline **always runs both NEAR and AND for 2-token queries**:
+
+1. NEAR query runs first (proximity — high precision)
+2. AND query runs simultaneously (broader recall)
+3. NEAR hits receive a score boost (`NEAR_SCORE_BOOST = -50000.0`) so they sort above AND hits in ranking
+4. The two result sets are merged and deduplicated
+
+This ensures that when NEAR returns only a few results, AND fills the gaps — giving the user a full set of results while still prioritizing proximity matches at the top.
+
+### AND query (primary for 3+ tokens)
 
 `buildAndQuery()` produces the FTS5 MATCH expression:
 
@@ -83,7 +94,7 @@ This means a 4-word query requires at least the first 3 words to appear in every
 
 `toFtsQueryOr()` joins all tokens with OR: `token1* OR token2* OR token3*`
 
-This is only used if the AND query returns zero results. When the fallback fires, the status bar shows: *"(Tip: try fewer or more specific keywords)"*
+This is only used if the AND query (or NEAR+AND merge) returns zero results. When the fallback fires, the status bar shows: *"(Tip: try fewer or more specific keywords)"*
 
 ---
 
@@ -135,7 +146,7 @@ Discards hits that contain none of the user's concept terms (4+ character non-no
 
 ## Stage 6: Phrase Search Merge
 
-**Skipped when NEAR fired.** When NEAR returned results, it already found passages where the two tokens are within 15 words of each other — phrase LIKE would only add weaker, distance-unbounded matches. Phrase LIKE runs only when NEAR returned 0 and AND (or OR) fired instead.
+**Skipped when NEAR fired (i.e., effective query starts with "NEAR").** When NEAR returned results, it already found passages where the two tokens are within 15 words of each other — phrase LIKE would only add weaker, distance-unbounded matches. Phrase LIKE runs only when NEAR returned 0 and AND (or OR) fired instead.
 
 When it runs, a separate **LIKE-based phrase search** queries the database (`fetchPhraseHits` / `buildPhraseSql`):
 
@@ -182,13 +193,15 @@ Exact duplicates (same normalized text) are also removed.
 
 ### Ranking (`rankForDisplay`)
 
-Hits are sorted by a three-level key:
+Hits are sorted by a four-level key:
 
-1. **Phrase hits first** — score ≤ -99990 sorts before BM25 hits, by passage length ascending (shorter phrase matches rank higher as they are more precise)
+1. **Phrase hits first** — score ≤ -99995 (phrase-LIKE sentinel) sorts above all others; within phrase hits, shorter passages rank higher (more precise match)
 
-2. **Quality band** — passages 200–900 characters (band 0) rank above 120–1100 characters (band 1), which rank above all others (band 2). This avoids very short fragments and very long extracts dominating results.
+2. **NEAR-boosted hits** — NEAR proximity hits receive a -50000 score offset, placing them above raw BM25 AND/OR hits but below phrase-LIKE matches
 
-3. **BM25 score** — within the same band, lower (more negative) BM25 score ranks first.
+3. **Quality band** — passages 200–900 characters (band 0) rank above 120–1100 characters (band 1), which rank above all others (band 2). This avoids very short fragments and very long extracts dominating results.
+
+4. **BM25 score** — within the same band, lower (more negative) BM25 score ranks first.
 
 ---
 
@@ -216,9 +229,10 @@ The effective query has wildcards stripped and operators lowercased for readabil
 
 ## Known Strengths
 
+- **NEAR + AND merged** — proximity results get priority, but AND fills gaps when NEAR is thin
 - **AND-first with OR fallback** ensures the user always gets something back while preferring precision
 - **Prefix wildcards** (`word*`) handle word endings — `pray*` matches pray, prayer, prayers, praying
-- **Unicode normalization** makes `Bahá'u'lláh` and `bahaullah` equivalent
+- **Unicode normalization** makes `Bahá'u'lláh` and `bahaullah` equivalent across FTS and Java filtering
 - **Phrase merge** catches exact multi-word sequences that tokenized FTS might rank poorly
 - **Boilerplate removal** prevents web-scraped navigation text from appearing as results
 
@@ -244,7 +258,7 @@ The NEAR window is hardcoded at 15 tokens. Too tight misses valid passages with 
 ### 6. No search history
 Users frequently discover good search terms by iterating. A lightweight search history (last 10 queries stored in SharedPreferences) would save retyping.
 
-### 6. Ranking is universal, not personalized
+### 7. Ranking is universal, not personalized
 All users see the same ranking. There is no mechanism to learn from which results a user copies or reads longer. This is by design for an offline app, but noting it as a future possibility.
 
 ---
@@ -252,3 +266,12 @@ All users see the same ranking. There is no mechanism to learn from which result
 ## Debugging
 
 Set `debugIntent = true` in `AppConfig.defaults()` to enable pipeline logging to Logcat under the tag `Corpus`. Each stage logs its hit count, allowing you to see exactly where the pipeline narrows the results.
+
+New log lines added by this version:
+
+| Log tag | What it shows |
+|---|---|
+| `FtsQuery NEAR: ... ->` | NEAR query being attempted |
+| `NEAR hits` | Number of NEAR results |
+| `FtsQuery AND (supplement): ... ->` | AND supplement query (always runs alongside NEAR) |
+| `AND supplement hits` | Number of AND results |

@@ -39,6 +39,12 @@ public final class LocalCorpusSearchService {
 
     private static final int NEAR_DISTANCE = 15;
 
+    /** Score offset applied to NEAR proximity hits so they rank above AND/OR FTS5 hits. */
+    private static final double NEAR_SCORE_BOOST = -50000.0;
+
+    /** Scores at or below this threshold are treated as phrase-LIKE matches (ranked by length). */
+    private static final double PHRASE_SCORE_THRESHOLD = -99995.0;
+
     private static final Set<String> NOISE_TOKENS = new HashSet<>(Arrays.asList(
             "by", "for", "with", "and", "the", "from", "about",
             "quotes", "quote", "please", "show", "find"));
@@ -84,9 +90,9 @@ public final class LocalCorpusSearchService {
         List<CorpusSearchHit> hits = hitsResult.hits;
         logCount(appConfig, "hits", hits.size());
 
-        List<CorpusSearchHit> filtered  = filterByRequestedAuthor(requiredAuthor, hits);
+        List<CorpusSearchHit> filtered   = filterByRequestedAuthor(requiredAuthor, hits);
         List<CorpusSearchHit> bookScoped = filterByRequestedBook(filtered, requestedBookTokens);
-        List<CorpusSearchHit> topical   = filterByContentTerms(bookScoped, conceptTerms);
+        List<CorpusSearchHit> topical    = filterByContentTerms(bookScoped, conceptTerms);
 
         List<String> topicFtsTokens = extractFtsTokens(topic, requiredAuthor);
         List<CorpusSearchHit> combinedPhraseHits = new ArrayList<>();
@@ -99,7 +105,7 @@ public final class LocalCorpusSearchService {
         topical = mergeHits(combinedPhraseHits, topical);
         logCount(appConfig, "after phrase merge", topical.size());
 
-        if (!requestedBookTokens.isEmpty() && topical.size() < requestedQuotes) {
+        if (!requestedBookTokens.isEmpty() && topical.size() < requestedQuotes && !nearFired) {
             List<CorpusSearchHit> additional = findAdditionalBookScopedHits(
                     db, requiredAuthor, explicitTitle, requestedBookTokens, conceptTerms,
                     Math.max(240, requestedQuotes * 50));
@@ -210,41 +216,75 @@ public final class LocalCorpusSearchService {
         String sql = buildHitsSql(authorScoped, titleScoped);
 
         List<CorpusSearchHit> hits = Collections.emptyList();
+        boolean usedOrFallback = false;
         String usedQuery = ftsQuery;
+        boolean nearAttempted = false;
 
         if (!isEmpty(nearQuery)) {
+            nearAttempted = true;
+
+            // 1) Run NEAR query (proximity — exacting)
             logCount(appConfig, "FtsQuery NEAR: " + nearQuery + " ->", 0);
-            hits = executeHitsQuery(db, sql, nearQuery,
+            List<CorpusSearchHit> nearHits = executeHitsQuery(db, sql, nearQuery,
                     authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
-            logCount(appConfig, "NEAR hits", hits.size());
-            if (!hits.isEmpty()) usedQuery = nearQuery;
+            logCount(appConfig, "NEAR hits", nearHits.size());
+
+            // 2) Run AND query to supplement — NEAR can be thin
+            logCount(appConfig, "FtsQuery AND (supplement): " + ftsQuery + " ->", 0);
+            List<CorpusSearchHit> andHits = executeHitsQuery(db, sql, ftsQuery,
+                    authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
+            logCount(appConfig, "AND supplement hits", andHits.size());
+
+            // 3) Boost NEAR scores so proximity matches rank above AND hits
+            if (!nearHits.isEmpty()) {
+                nearHits = applyNearBoost(nearHits);
+            }
+
+            // 4) Merge: NEAR first (boosted), then AND (deduplicated)
+            hits = mergeHits(nearHits, andHits);
+
+            if (!nearHits.isEmpty()) {
+                usedQuery = nearQuery;
+            } else if (!andHits.isEmpty()) {
+                usedQuery = ftsQuery;
+            }
         }
 
-        if (hits.isEmpty()) {
+        if (!nearAttempted) {
             logCount(appConfig, "FtsQuery AND: " + ftsQuery + " ->", 0);
             hits = executeHitsQuery(db, sql, ftsQuery,
                     authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
             logCount(appConfig, "AND hits", hits.size());
+
+            if (hits.isEmpty() && !isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
+                logCount(appConfig, "FtsQuery OR: " + orFtsQuery + " ->", 0);
+                hits = executeHitsQuery(db, sql, orFtsQuery,
+                        authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
+                logCount(appConfig, "OR hits", hits.size());
+                usedOrFallback = true;
+                usedQuery = orFtsQuery;
+            }
         }
 
-        boolean usedOrFallback = false;
-        if (hits.isEmpty() && !isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
-            logCount(appConfig, "FtsQuery OR: " + orFtsQuery + " ->", 0);
-            hits = executeHitsQuery(db, sql, orFtsQuery,
-                    authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
-            logCount(appConfig, "OR hits", hits.size());
-            usedOrFallback = true;
-            usedQuery = orFtsQuery;
-        }
-
-        if (!requestedBookTokens.isEmpty()) {
-            hits = filterByRequestedBook(hits, requestedBookTokens);
-        }
+        // Note: book filter not applied here — it runs in search() after author/content filtering.
+        // Keeping it here would be redundant and would double-filter.
 
         List<CorpusSearchHit> limited = hits.stream()
                 .limit(Math.max(1, limit))
                 .collect(Collectors.toList());
         return new HitsResult(limited, usedQuery, usedOrFallback);
+    }
+
+    /** Adds NEAR_SCORE_BOOST to each hit's BM25 score so proximity results rank above AND/OR hits. */
+    private static List<CorpusSearchHit> applyNearBoost(List<CorpusSearchHit> hits) {
+        List<CorpusSearchHit> boosted = new ArrayList<>(hits.size());
+        for (CorpusSearchHit hit : hits) {
+            boosted.add(new CorpusSearchHit(
+                    hit.quote(), hit.author(), hit.title(),
+                    hit.locator(), hit.sourceUrl(),
+                    hit.score() + NEAR_SCORE_BOOST));
+        }
+        return boosted;
     }
 
     private static List<CorpusSearchHit> executeHitsQuery(
@@ -422,17 +462,20 @@ public final class LocalCorpusSearchService {
     private static List<CorpusSearchHit> rankForDisplay(List<CorpusSearchHit> hits) {
         return hits.stream()
                 .sorted((l, r) -> {
-                    boolean lPhrase = l.score() <= -99990;
-                    boolean rPhrase = r.score() <= -99990;
+                    // Tier 1: phrase-LIKE matches (sentinel score) — rank by length (shorter = more precise)
+                    boolean lPhrase = l.score() <= PHRASE_SCORE_THRESHOLD;
+                    boolean rPhrase = r.score() <= PHRASE_SCORE_THRESHOLD;
                     if (lPhrase != rPhrase) return lPhrase ? -1 : 1;
                     if (lPhrase) {
                         int lLen = l.quote() == null ? 0 : l.quote().length();
                         int rLen = r.quote() == null ? 0 : r.quote().length();
                         return Integer.compare(lLen, rLen);
                     }
+                    // Tier 2: quality band (preferred passage length)
                     int lb = qualityBand(l.quote());
                     int rb = qualityBand(r.quote());
                     if (lb != rb) return Integer.compare(lb, rb);
+                    // Tier 3: BM25 (or NEAR-boosted BM25) — more negative = more relevant
                     return Double.compare(l.score(), r.score());
                 })
                 .collect(Collectors.toList());
@@ -522,15 +565,22 @@ public final class LocalCorpusSearchService {
         return sb.toString();
     }
 
+    /**
+     * Extracts FTS5 search tokens from the user's topic, applying the same Unicode
+     * normalization used throughout the pipeline (NFD decomposition, accent stripping,
+     * lowercase) so that diacritics are handled consistently in both FTS queries and
+     * post-retrieval content-term filtering.
+     */
     private static List<String> extractFtsTokens(String topic, String resolvedAuthor) {
         if (topic == null) return Collections.emptyList();
         Set<String> authorTokens = buildAuthorTokenSet(resolvedAuthor);
         List<String> tokens = new ArrayList<>();
-        for (String token : topic.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{Nd}]+")) {
-            String trimmed = token.trim();
-            if (trimmed.length() >= 3 && !NOISE_TOKENS.contains(trimmed)
-                    && !authorTokens.contains(trimmed)) {
-                tokens.add(trimmed + "*");
+        // Use normalizeForMatch so á→a, é→e consistently with the rest of the pipeline
+        for (String token : normalizeForMatch(topic).split("\\s+")) {
+            if (token.isEmpty()) continue;
+            if (token.length() >= 3 && !NOISE_TOKENS.contains(token)
+                    && !authorTokens.contains(token)) {
+                tokens.add(token + "*");
             }
         }
         return new ArrayList<>(new LinkedHashSet<>(tokens));

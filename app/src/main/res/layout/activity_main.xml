@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Bahá'í Research"
-        android:textSize="18sp"
+        android:textSize="@dimen/title_text_size"
         android:textStyle="bold"
         android:gravity="center"
         android:paddingBottom="8dp" />
@@ -62,7 +62,7 @@
         android:layout_marginTop="8dp"
         android:paddingStart="4dp"
         android:text="Loading corpus…"
-        android:textSize="14sp" />
+        android:textSize="@dimen/status_text_size" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerResults"

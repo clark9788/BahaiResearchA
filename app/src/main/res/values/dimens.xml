@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Main screen -->
+    <dimen name="title_text_size">18sp</dimen>
+    <dimen name="status_text_size">14sp</dimen>
+
+    <!-- Search result cards -->
+    <dimen name="quote_text_size">16sp</dimen>
+    <dimen name="attribution_text_size">14sp</dimen>
+</resources>
