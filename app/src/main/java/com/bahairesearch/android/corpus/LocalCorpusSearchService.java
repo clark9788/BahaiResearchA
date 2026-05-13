@@ -471,24 +471,15 @@ public final class LocalCorpusSearchService {
                         int rLen = r.quote() == null ? 0 : r.quote().length();
                         return Integer.compare(lLen, rLen);
                     }
-                    // Tier 2: quality band (preferred passage length)
-                    int lb = qualityBand(l.quote());
-                    int rb = qualityBand(r.quote());
-                    if (lb != rb) return Integer.compare(lb, rb);
-                    // Tier 3: BM25 (or NEAR-boosted BM25) — more negative = more relevant
+                    // Tier 2: BM25 (or NEAR-boosted BM25) — more negative = more relevant
                     return Double.compare(l.score(), r.score());
                 })
                 .collect(Collectors.toList());
     }
 
-    private static int qualityBand(String quote) {
-        int length = quote == null ? 0 : quote.trim().length();
-        if (length >= 200 && length <= 900)  return 0;
-        if (length >= 120 && length <= 1100) return 1;
-        return 2;
-    }
-
     private static String boilerplateReason(CorpusSearchHit hit) {
+        if (hit.quote().trim().isEmpty()) return "empty";
+        if (hit.quote().length() < 25) return "too-short";
         if (hit.quote().length() > 15_000) return "too-long";
         String q = normalizeForMatch(hit.quote());
         if (q.contains("bahai reference library"))                                return "bahai-ref-lib";
