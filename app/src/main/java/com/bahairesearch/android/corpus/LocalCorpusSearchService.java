@@ -39,8 +39,8 @@ public final class LocalCorpusSearchService {
 
     private static final int NEAR_DISTANCE = 15;
 
-    /** Score offset applied to NEAR proximity hits so they rank above AND/OR FTS5 hits. */
-    private static final double NEAR_SCORE_BOOST = -50000.0;
+    /** Score multiplier applied to NEAR proximity hits so they rank above AND/OR FTS5 hits. */
+    private static final double NEAR_BOOST_MULTIPLIER = 1000.0;
 
     /** Scores at or below this threshold are treated as phrase-LIKE matches (ranked by length). */
     private static final double PHRASE_SCORE_THRESHOLD = -99995.0;
@@ -275,14 +275,14 @@ public final class LocalCorpusSearchService {
         return new HitsResult(limited, usedQuery, usedOrFallback);
     }
 
-    /** Adds NEAR_SCORE_BOOST to each hit's BM25 score so proximity results rank above AND/OR hits. */
+    /** Multiplies each hit's BM25 score so NEAR proximity results rank above AND/OR hits. */
     private static List<CorpusSearchHit> applyNearBoost(List<CorpusSearchHit> hits) {
         List<CorpusSearchHit> boosted = new ArrayList<>(hits.size());
         for (CorpusSearchHit hit : hits) {
             boosted.add(new CorpusSearchHit(
                     hit.quote(), hit.author(), hit.title(),
                     hit.locator(), hit.sourceUrl(),
-                    hit.score() + NEAR_SCORE_BOOST));
+                    hit.score() * NEAR_BOOST_MULTIPLIER));
         }
         return boosted;
     }
@@ -545,8 +545,10 @@ public final class LocalCorpusSearchService {
 
     private static String toFtsQueryNear(String topic, String resolvedAuthor) {
         List<String> tokens = extractFtsTokens(topic, resolvedAuthor);
-        if (tokens.size() != 2) return "";
-        return "NEAR(" + tokens.get(0) + " " + tokens.get(1) + ", " + NEAR_DISTANCE + ")";
+        if (tokens.size() < 2) return "";
+        // Use first 3 tokens for NEAR (matching AND's 3-required-token cap in buildAndQuery)
+        List<String> nearTokens = tokens.size() >= 3 ? tokens.subList(0, 3) : tokens;
+        return "NEAR(" + String.join(" ", nearTokens) + ", " + NEAR_DISTANCE + ")";
     }
 
     private static String toFtsQuery(String topic, String resolvedAuthor) {
