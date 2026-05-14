@@ -47,7 +47,9 @@ public final class LocalCorpusSearchService {
 
     private static final Set<String> NOISE_TOKENS = new HashSet<>(Arrays.asList(
             "by", "for", "with", "and", "the", "from", "about",
-            "quotes", "quote", "please", "show", "find"));
+            "quotes", "quote", "please", "show", "find",
+            "are", "but", "can", "had", "has", "its", "may", "not", "out", "was",
+            "all", "any", "she", "who", "why", "yet", "you", "how", "let", "too", "now"));
     private static final Set<String> GENERIC_QUERY_TOKENS = new HashSet<>(Arrays.asList(
             "book", "books", "most", "issue", "issues"));
 
@@ -479,7 +481,7 @@ public final class LocalCorpusSearchService {
 
     private static String boilerplateReason(CorpusSearchHit hit) {
         if (hit.quote().trim().isEmpty()) return "empty";
-        if (hit.quote().length() < 25) return "too-short";
+        if (hit.quote().length() < 80) return "too-short";
         if (hit.quote().length() > 15_000) return "too-long";
         String q = normalizeForMatch(hit.quote());
         if (q.contains("bahai reference library"))                                return "bahai-ref-lib";
@@ -510,7 +512,7 @@ public final class LocalCorpusSearchService {
         }
         List<String> terms = new ArrayList<>();
         for (String token : normalizedTopic.split("\\s+")) {
-            if (token.length() < 4) continue;
+            if (token.length() < 3) continue;
             if (NOISE_TOKENS.contains(token) || GENERIC_QUERY_TOKENS.contains(token)
                     || authorTerms.contains(token)) continue;
             terms.add(token);

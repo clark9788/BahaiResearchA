@@ -49,7 +49,7 @@ The required author comes directly from the author spinner. If the user selects 
 
 1. Normalize via `normalizeForMatch()` (NFD → lowercase → strip non-alphanumeric)
 2. Discard tokens shorter than 3 characters
-3. Discard **noise tokens**: `by for with and the from about quotes quote please show find`
+3. Discard **noise tokens**: `by for with and the from about quotes quote please show find are but can had has its may not out was all any she who why yet you how let too now`
 4. Discard **generic tokens**: `book books most issue issues` (applied in `extractContentTerms`, but tokens are already dropped at extraction)
 5. Discard any token that appears in the resolved author's name
 6. Append `*` (prefix wildcard) to each remaining token
@@ -61,21 +61,22 @@ The required author comes directly from the author spinner. If the user selects 
 **Example:** `"unity mankind service"`
 → tokens: `["unity*", "mankind*", "service*"]`
 
-### NEAR + AND merged (2-token queries)
+### NEAR + AND merged (2–3 token queries)
 
-`toFtsQueryNear()` produces a proximity query when the user enters exactly 2 search tokens:
+`toFtsQueryNear()` produces a proximity query when the user enters 2 or 3 search tokens:
 
 ```
 NEAR(divine* intervention*, NEAR_DISTANCE)
+NEAR(unity* mankind* service*, NEAR_DISTANCE)
 ```
 
-Both tokens must appear within 15 words of each other. This prevents false positives where the two words match independently in unrelated parts of a long passage.
+All tokens must appear within 15 words of each other. This prevents false positives where the words match independently in unrelated parts of a long passage.
 
-Unlike the original design where NEAR ran alone (bypassing AND entirely), the improved pipeline **always runs both NEAR and AND for 2-token queries**:
+The pipeline **always runs both NEAR and AND for 2–3 token queries**:
 
 1. NEAR query runs first (proximity — high precision)
 2. AND query runs simultaneously (broader recall)
-3. NEAR hits receive a score boost (`NEAR_SCORE_BOOST = -50000.0`) so they sort above AND hits in ranking
+3. NEAR hits receive a score boost (BM25 × 1000) so they sort above AND hits in ranking
 4. The two result sets are merged and deduplicated
 
 This ensures that when NEAR returns only a few results, AND fills the gaps — giving the user a full set of results while still prioritizing proximity matches at the top.
@@ -140,7 +141,7 @@ This allows partial matches on long book names while still being specific.
 
 ### 5c. Content term filter (`filterByContentTerms`)
 
-Discards hits that contain none of the user's concept terms (4+ character non-noise tokens from the query). This prevents off-topic results that happened to match a common word. The check is word-exact against the normalized passage text.
+Discards hits that contain none of the user's concept terms (3+ character non-noise tokens from the query, with noise tokens like `the` `and` `but` `for` excluded). This prevents off-topic results that happened to match a common word. The check is word-exact against the normalized passage text.
 
 ---
 
@@ -193,15 +194,15 @@ Exact duplicates (same normalized text) are also removed.
 
 ### Ranking (`rankForDisplay`)
 
-Hits are sorted by a four-level key:
+Hits are sorted by:
 
 1. **Phrase hits first** — score ≤ -99995 (phrase-LIKE sentinel) sorts above all others; within phrase hits, shorter passages rank higher (more precise match)
 
-2. **NEAR-boosted hits** — NEAR proximity hits receive a -50000 score offset, placing them above raw BM25 AND/OR hits but below phrase-LIKE matches
+2. **NEAR-boosted hits** — NEAR proximity hits receive a ×1000 multiplier on their BM25 score, so stronger NEAR matches outrank weaker ones while still sorting above raw BM25 AND/OR hits
 
-3. **Quality band** — passages 200–900 characters (band 0) rank above 120–1100 characters (band 1), which rank above all others (band 2). This avoids very short fragments and very long extracts dominating results.
+3. **BM25 score** — among non-phrase hits, lower (more negative) BM25 score ranks first
 
-4. **BM25 score** — within the same band, lower (more negative) BM25 score ranks first.
+Short outliers (< 90 characters) and very long outliers (> 15,000 characters) are filtered out in `boilerplateReason()` before ranking, so the quality-band step is no longer needed.
 
 ---
 
@@ -210,7 +211,6 @@ Hits are sorted by a four-level key:
 | Parameter | Value | Purpose |
 |---|---|---|
 | `maxQuotes` | 12 | Maximum results returned |
-| `minPassageLength` | 80 | Not yet enforced in filtering (future use) |
 | `debugIntent` | false | Set to true to log pipeline counts to Logcat |
 | `noResultsText` | "No results found." | Displayed when pipeline returns empty |
 
@@ -249,8 +249,8 @@ The effective query has wildcards stripped and operators lowercased for readabil
 ### 3. Phrase LIKE pattern is order-dependent
 `%unity%mankind%` matches "unity of mankind" but not "mankind's unity". If word order in the query doesn't match the text, the phrase hit is missed. An order-independent version would require multiple permutations.
 
-### 4. `minPassageLength` is defined but not applied
-`AppConfig.minPassageLength` (currently 80) is never checked during filtering. Very short passages (single sentences or fragments) can still surface. Enforcing a minimum would improve result quality.
+### 4. Length floor is hard-coded in boilerplateReason
+Passages shorter than 90 characters are now filtered in `boilerplateReason()`. This catches hidden words, footnotes, and Kitáb-i-Aqdas notes. The threshold is hard-coded rather than configurable, so tuning it requires a code change.
 
 ### 5. NEAR distance is a fixed constant
 The NEAR window is hardcoded at 15 tokens. Too tight misses valid passages with intervening clauses; too loose behaves like AND. 15 is a reasonable default but could be made configurable in `AppConfig` if tuning is needed.
