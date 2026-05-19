@@ -4,7 +4,7 @@ import io.requery.android.database.sqlite.SQLiteDatabase;
 
 import com.bahairesearch.android.config.AppConfig;
 import com.bahairesearch.android.corpus.LocalCorpusSearchService;
-import com.bahairesearch.android.model.ResearchReport;
+import com.bahairesearch.common.model.ResearchReport;
 
 import java.util.Collections;
 import java.util.List;

@@ -13,7 +13,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.bahairesearch.android.model.QuoteResult;
+import com.bahairesearch.common.model.QuoteResult;
 
 import java.util.List;
 

@@ -5,22 +5,19 @@ import io.requery.android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
 
 import com.bahairesearch.android.config.AppConfig;
-import com.bahairesearch.android.model.QuoteResult;
-import com.bahairesearch.android.model.ResearchReport;
+import com.bahairesearch.common.model.CorpusSearchHit;
+import com.bahairesearch.common.model.QuoteResult;
+import com.bahairesearch.common.model.ResearchReport;
+import com.bahairesearch.common.search.SearchCore;
 
-import java.text.Normalizer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Full-text search against the corpus database: FTS5 retrieval, filtering, ranking, and deduplication.
+ * Pure search logic is delegated to SearchCore; this class owns only the Android SQLite access layer.
  */
 public final class LocalCorpusSearchService {
 
@@ -36,22 +33,6 @@ public final class LocalCorpusSearchService {
             this.usedFallback = usedFallback;
         }
     }
-
-    private static final int NEAR_DISTANCE = 15;
-
-    /** Score multiplier applied to NEAR proximity hits so they rank above AND/OR FTS5 hits. */
-    private static final double NEAR_BOOST_MULTIPLIER = 1000.0;
-
-    /** Scores at or below this threshold are treated as phrase-LIKE matches (ranked by length). */
-    private static final double PHRASE_SCORE_THRESHOLD = -99995.0;
-
-    private static final Set<String> NOISE_TOKENS = new HashSet<>(Arrays.asList(
-            "by", "for", "with", "and", "the", "from", "about",
-            "quotes", "quote", "please", "show", "find",
-            "are", "but", "can", "had", "has", "its", "may", "not", "out", "was",
-            "all", "any", "she", "who", "why", "yet", "you", "how", "let", "too", "now"));
-    private static final Set<String> GENERIC_QUERY_TOKENS = new HashSet<>(Arrays.asList(
-            "book", "books", "most", "issue", "issues"));
 
     private LocalCorpusSearchService() {}
 
@@ -74,29 +55,29 @@ public final class LocalCorpusSearchService {
     ) {
         String requiredAuthor = explicitAuthor;
 
-        String nearQuery  = toFtsQueryNear(topic, requiredAuthor);
-        String ftsQuery   = toFtsQuery(topic, requiredAuthor);
-        String orFtsQuery = toFtsQueryOr(topic, requiredAuthor);
+        String nearQuery  = SearchCore.toFtsQueryNear(topic, requiredAuthor);
+        String ftsQuery   = SearchCore.toFtsQuery(topic, requiredAuthor);
+        String orFtsQuery = SearchCore.toFtsQueryOr(topic, requiredAuthor);
         if (ftsQuery.trim().isEmpty()) {
             return new ResearchReport(appConfig.noResultsText(), Collections.emptyList());
         }
 
-        int requestedQuotes  = Math.max(1, appConfig.maxQuotes());
+        int requestedQuotes   = Math.max(1, appConfig.maxQuotes());
         int retrievalPoolSize = Math.max(requestedQuotes * 12, 60);
 
-        List<String> requestedBookTokens = bookTokensFromTitle(explicitTitle);
-        List<String> conceptTerms        = extractContentTerms(topic, requiredAuthor);
+        List<String> requestedBookTokens = SearchCore.bookTokensFromTitle(explicitTitle);
+        List<String> conceptTerms        = SearchCore.extractContentTerms(topic, requiredAuthor);
 
         HitsResult hitsResult = findHits(db, nearQuery, ftsQuery, orFtsQuery, retrievalPoolSize,
                 requiredAuthor, explicitTitle, requestedBookTokens, appConfig);
         List<CorpusSearchHit> hits = hitsResult.hits;
         logCount(appConfig, "hits", hits.size());
 
-        List<CorpusSearchHit> filtered   = filterByRequestedAuthor(requiredAuthor, hits);
-        List<CorpusSearchHit> bookScoped = filterByRequestedBook(filtered, requestedBookTokens);
-        List<CorpusSearchHit> topical    = filterByContentTerms(bookScoped, conceptTerms);
+        List<CorpusSearchHit> filtered   = SearchCore.filterByRequestedAuthor(requiredAuthor, hits);
+        List<CorpusSearchHit> bookScoped = SearchCore.filterByRequestedBook(filtered, requestedBookTokens);
+        List<CorpusSearchHit> topical    = SearchCore.filterByContentTerms(bookScoped, conceptTerms);
 
-        List<String> topicFtsTokens = extractFtsTokens(topic, requiredAuthor);
+        List<String> topicFtsTokens = SearchCore.extractFtsTokens(topic, requiredAuthor);
         List<CorpusSearchHit> combinedPhraseHits = new ArrayList<>();
         boolean nearFired = hitsResult.effectiveQuery.startsWith("NEAR(");
         if (topicFtsTokens.size() >= 2 && !nearFired) {
@@ -104,18 +85,18 @@ public final class LocalCorpusSearchService {
                     requiredAuthor, explicitTitle, requestedBookTokens));
             logCount(appConfig, "phrase hits", combinedPhraseHits.size());
         }
-        topical = mergeHits(combinedPhraseHits, topical);
+        topical = SearchCore.mergeHits(combinedPhraseHits, topical);
         logCount(appConfig, "after phrase merge", topical.size());
 
         if (!requestedBookTokens.isEmpty() && topical.size() < requestedQuotes && !nearFired) {
             List<CorpusSearchHit> additional = findAdditionalBookScopedHits(
                     db, requiredAuthor, explicitTitle, requestedBookTokens, conceptTerms,
                     Math.max(240, requestedQuotes * 50));
-            topical = mergeHits(topical, additional);
+            topical = SearchCore.mergeHits(topical, additional);
         }
 
         List<CorpusSearchHit> candidatePool =
-                rankForDisplay(removeBoilerplateAndDuplicates(topical));
+                SearchCore.rankForDisplay(SearchCore.removeBoilerplateAndDuplicates(topical));
         logCount(appConfig, "candidatePool", candidatePool.size());
 
         List<CorpusSearchHit> curated = candidatePool.stream()
@@ -129,10 +110,10 @@ public final class LocalCorpusSearchService {
         for (CorpusSearchHit hit : curated) {
             quotes.add(new QuoteResult(
                     hit.quote(),
-                    blankToFallback(hit.author(), "Unknown"),
-                    blankToFallback(hit.title(), "Untitled"),
-                    blankToFallback(hit.locator(), "Not specified"),
-                    blankToFallback(hit.sourceUrl(), "N/A")));
+                    SearchCore.blankToFallback(hit.author(), "Unknown"),
+                    SearchCore.blankToFallback(hit.title(), "Untitled"),
+                    SearchCore.blankToFallback(hit.locator(), "Not specified"),
+                    SearchCore.blankToFallback(hit.sourceUrl(), "N/A")));
         }
 
         String displayQuery = hitsResult.effectiveQuery
@@ -213,8 +194,8 @@ public final class LocalCorpusSearchService {
             String requiredAuthor, String explicitTitle,
             List<String> requestedBookTokens, AppConfig appConfig) {
 
-        boolean authorScoped = !isEmpty(requiredAuthor);
-        boolean titleScoped  = !isEmpty(explicitTitle);
+        boolean authorScoped = !SearchCore.isEmpty(requiredAuthor);
+        boolean titleScoped  = !SearchCore.isEmpty(explicitTitle);
         String sql = buildHitsSql(authorScoped, titleScoped);
 
         List<CorpusSearchHit> hits = Collections.emptyList();
@@ -222,28 +203,24 @@ public final class LocalCorpusSearchService {
         String usedQuery = ftsQuery;
         boolean nearAttempted = false;
 
-        if (!isEmpty(nearQuery)) {
+        if (!SearchCore.isEmpty(nearQuery)) {
             nearAttempted = true;
 
-            // 1) Run NEAR query (proximity — exacting)
             logCount(appConfig, "FtsQuery NEAR: " + nearQuery + " ->", 0);
             List<CorpusSearchHit> nearHits = executeHitsQuery(db, sql, nearQuery,
                     authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
             logCount(appConfig, "NEAR hits", nearHits.size());
 
-            // 2) Run AND query to supplement — NEAR can be thin
             logCount(appConfig, "FtsQuery AND (supplement): " + ftsQuery + " ->", 0);
             List<CorpusSearchHit> andHits = executeHitsQuery(db, sql, ftsQuery,
                     authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
             logCount(appConfig, "AND supplement hits", andHits.size());
 
-            // 3) Boost NEAR scores so proximity matches rank above AND hits
             if (!nearHits.isEmpty()) {
-                nearHits = applyNearBoost(nearHits);
+                nearHits = SearchCore.applyNearBoost(nearHits);
             }
 
-            // 4) Merge: NEAR first (boosted), then AND (deduplicated)
-            hits = mergeHits(nearHits, andHits);
+            hits = SearchCore.mergeHits(nearHits, andHits);
 
             if (!nearHits.isEmpty()) {
                 usedQuery = nearQuery;
@@ -258,7 +235,7 @@ public final class LocalCorpusSearchService {
                     authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
             logCount(appConfig, "AND hits", hits.size());
 
-            if (hits.isEmpty() && !isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
+            if (hits.isEmpty() && !SearchCore.isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
                 logCount(appConfig, "FtsQuery OR: " + orFtsQuery + " ->", 0);
                 hits = executeHitsQuery(db, sql, orFtsQuery,
                         authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
@@ -268,25 +245,10 @@ public final class LocalCorpusSearchService {
             }
         }
 
-        // Note: book filter not applied here — it runs in search() after author/content filtering.
-        // Keeping it here would be redundant and would double-filter.
-
         List<CorpusSearchHit> limited = hits.stream()
                 .limit(Math.max(1, limit))
                 .collect(Collectors.toList());
         return new HitsResult(limited, usedQuery, usedOrFallback);
-    }
-
-    /** Multiplies each hit's BM25 score so NEAR proximity results rank above AND/OR hits. */
-    private static List<CorpusSearchHit> applyNearBoost(List<CorpusSearchHit> hits) {
-        List<CorpusSearchHit> boosted = new ArrayList<>(hits.size());
-        for (CorpusSearchHit hit : hits) {
-            boosted.add(new CorpusSearchHit(
-                    hit.quote(), hit.author(), hit.title(),
-                    hit.locator(), hit.sourceUrl(),
-                    hit.score() * NEAR_BOOST_MULTIPLIER));
-        }
-        return boosted;
     }
 
     private static List<CorpusSearchHit> executeHitsQuery(
@@ -320,12 +282,12 @@ public final class LocalCorpusSearchService {
             String requiredAuthor, String explicitTitle,
             List<String> requestedBookTokens) {
 
-        boolean authorScoped = !isEmpty(requiredAuthor);
-        boolean titleScoped  = !isEmpty(explicitTitle);
+        boolean authorScoped = !SearchCore.isEmpty(requiredAuthor);
+        boolean titleScoped  = !SearchCore.isEmpty(explicitTitle);
         String sql = buildPhraseSql(authorScoped, titleScoped);
 
         List<String> args = new ArrayList<>();
-        args.add("%" + normalizeForMatch(knownPhrase).replace(" ", "%") + "%");
+        args.add("%" + SearchCore.normalizeForMatch(knownPhrase).replace(" ", "%") + "%");
         if (authorScoped) args.add(requiredAuthor);
         if (titleScoped)  args.add(explicitTitle);
         args.add(String.valueOf(Math.max(1, limit)));
@@ -343,7 +305,7 @@ public final class LocalCorpusSearchService {
             }
         }
         if (!requestedBookTokens.isEmpty()) {
-            return filterByRequestedBook(hits, requestedBookTokens);
+            return SearchCore.filterByRequestedBook(hits, requestedBookTokens);
         }
         return hits;
     }
@@ -352,8 +314,8 @@ public final class LocalCorpusSearchService {
             SQLiteDatabase db, String requiredAuthor, String explicitTitle,
             List<String> requestedBookTokens, List<String> contentTerms, int limit) {
 
-        boolean authorScoped = !isEmpty(requiredAuthor);
-        boolean titleScoped  = !isEmpty(explicitTitle);
+        boolean authorScoped = !SearchCore.isEmpty(requiredAuthor);
+        boolean titleScoped  = !SearchCore.isEmpty(explicitTitle);
         String sql = buildBookScopedSql(authorScoped, titleScoped);
 
         List<String> args = new ArrayList<>();
@@ -371,271 +333,20 @@ public final class LocalCorpusSearchService {
                         trimToEmpty(cursor.getString(3)),
                         trimToEmpty(cursor.getString(4)),
                         cursor.getDouble(5));
-                if (countBookTokenMatches(hit, requestedBookTokens) == 0) continue;
-                if (!contentTerms.isEmpty() && !containsAnyContentTerm(hit.quote(), contentTerms)) continue;
+                if (SearchCore.countBookTokenMatches(hit, requestedBookTokens) == 0) continue;
+                if (!contentTerms.isEmpty() && !SearchCore.containsAnyContentTerm(hit.quote(), contentTerms)) continue;
                 hits.add(hit);
             }
         }
         return hits;
     }
 
-    private static List<CorpusSearchHit> mergeHits(
-            List<CorpusSearchHit> primary, List<CorpusSearchHit> secondary) {
-        List<CorpusSearchHit> merged = new ArrayList<>(primary);
-        Set<String> seen = new HashSet<>();
-        for (CorpusSearchHit hit : primary) {
-            seen.add(normalizeForMatch(hit.quote()) + "|" + normalizeForMatch(hit.sourceUrl()));
-        }
-        for (CorpusSearchHit hit : secondary) {
-            String key = normalizeForMatch(hit.quote()) + "|" + normalizeForMatch(hit.sourceUrl());
-            if (seen.add(key)) merged.add(hit);
-        }
-        return merged;
-    }
-
     // -------------------------------------------------------------------------
-    // Post-retrieval filters
+    // Utilities
     // -------------------------------------------------------------------------
-
-    private static List<CorpusSearchHit> filterByRequestedAuthor(
-            String requiredAuthor, List<CorpusSearchHit> hits) {
-        if (isEmpty(requiredAuthor)) return hits;
-        String normalized = normalizeForMatch(requiredAuthor);
-        return hits.stream()
-                .filter(hit -> normalizeForMatch(hit.author()).equals(normalized))
-                .collect(Collectors.toList());
-    }
-
-    private static List<CorpusSearchHit> filterByContentTerms(
-            List<CorpusSearchHit> hits, List<String> contentTerms) {
-        if (contentTerms.isEmpty()) return hits;
-        return hits.stream()
-                .filter(hit -> containsAnyContentTerm(hit.quote(), contentTerms))
-                .collect(Collectors.toList());
-    }
-
-    private static List<CorpusSearchHit> filterByRequestedBook(
-            List<CorpusSearchHit> hits, List<String> requestedBookTokens) {
-        if (requestedBookTokens.isEmpty()) return hits;
-        int requiredMatches = requestedBookTokens.size() <= 2 ? requestedBookTokens.size() : 2;
-        return hits.stream()
-                .filter(hit -> countBookTokenMatches(hit, requestedBookTokens) >= requiredMatches)
-                .collect(Collectors.toList());
-    }
-
-    private static int countBookTokenMatches(CorpusSearchHit hit, List<String> requestedBookTokens) {
-        String normalizedTitle = normalizeForMatch(hit.title());
-        String normalizedUrl   = normalizeForMatch(hit.sourceUrl());
-        int matches = 0;
-        for (String token : requestedBookTokens) {
-            if (normalizedTitle.contains(token) || normalizedUrl.contains(token)) matches++;
-        }
-        return matches;
-    }
-
-    private static boolean containsAnyContentTerm(String quote, List<String> contentTerms) {
-        String normalizedQuote = normalizeForMatch(quote);
-        Set<String> quoteTokens = new HashSet<>();
-        for (String token : normalizedQuote.split("\\s+")) {
-            if (!token.isEmpty()) quoteTokens.add(token);
-        }
-        for (String term : contentTerms) {
-            if (quoteTokens.contains(term)) return true;
-        }
-        return false;
-    }
-
-    // -------------------------------------------------------------------------
-    // Ranking and boilerplate removal
-    // -------------------------------------------------------------------------
-
-    private static List<CorpusSearchHit> removeBoilerplateAndDuplicates(List<CorpusSearchHit> hits) {
-        List<CorpusSearchHit> curated = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (CorpusSearchHit hit : hits) {
-            if (boilerplateReason(hit) != null) continue;
-            String key = normalizeForMatch(hit.quote());
-            if (key.isEmpty() || !seen.add(key)) continue;
-            curated.add(hit);
-        }
-        return curated;
-    }
-
-    private static List<CorpusSearchHit> rankForDisplay(List<CorpusSearchHit> hits) {
-        return hits.stream()
-                .sorted((l, r) -> {
-                    // Tier 1: phrase-LIKE matches (sentinel score) — rank by length (shorter = more precise)
-                    boolean lPhrase = l.score() <= PHRASE_SCORE_THRESHOLD;
-                    boolean rPhrase = r.score() <= PHRASE_SCORE_THRESHOLD;
-                    if (lPhrase != rPhrase) return lPhrase ? -1 : 1;
-                    if (lPhrase) {
-                        int lLen = l.quote() == null ? 0 : l.quote().length();
-                        int rLen = r.quote() == null ? 0 : r.quote().length();
-                        return Integer.compare(lLen, rLen);
-                    }
-                    // Tier 2: BM25 (or NEAR-boosted BM25) — more negative = more relevant
-                    return Double.compare(l.score(), r.score());
-                })
-                .collect(Collectors.toList());
-    }
-
-    private static String boilerplateReason(CorpusSearchHit hit) {
-        if (hit.quote().trim().isEmpty()) return "empty";
-        if (hit.quote().length() < 80) return "too-short";
-        if (hit.quote().length() > 15_000) return "too-long";
-        String q = normalizeForMatch(hit.quote());
-        if (q.contains("bahai reference library"))                                return "bahai-ref-lib";
-        if (q.startsWith("a collection of") || q.startsWith("a selection of"))    return "collection-header";
-        if (q.contains("can be found here"))                                       return "found-here";
-        if (q.contains("downloads about downloads")
-                || q.contains("all downloads in authoritative writings and guidance")
-                || q.contains("copyright and terms of use")
-                || q.contains("read online")
-                || q.contains("bahai org home")
-                || q.contains("search the bahai reference library"))               return "nav-element";
-        if (q.contains("see also"))                                                return "see-also";
-        return null;
-    }
-
-    // -------------------------------------------------------------------------
-    // Term and concept inference
-    // -------------------------------------------------------------------------
-
-    private static List<String> extractContentTerms(String topic, String requiredAuthor) {
-        String normalizedTopic = normalizeForMatch(topic);
-        if (normalizedTopic.isEmpty()) return Collections.emptyList();
-        Set<String> authorTerms = new HashSet<>();
-        if (!isEmpty(requiredAuthor)) {
-            for (String token : normalizeForMatch(requiredAuthor).split("\\s+")) {
-                if (!token.isEmpty()) authorTerms.add(token);
-            }
-        }
-        List<String> terms = new ArrayList<>();
-        for (String token : normalizedTopic.split("\\s+")) {
-            if (token.length() < 3) continue;
-            if (NOISE_TOKENS.contains(token) || GENERIC_QUERY_TOKENS.contains(token)
-                    || authorTerms.contains(token)) continue;
-            terms.add(token);
-        }
-        return terms;
-    }
-
-    private static List<String> bookTokensFromTitle(String explicitTitle) {
-        if (isEmpty(explicitTitle)) return Collections.emptyList();
-        List<String> tokens = new ArrayList<>();
-        for (String token : normalizeForMatch(explicitTitle).split("\\s+")) {
-            if (token.length() >= 3 && !NOISE_TOKENS.contains(token)
-                    && !GENERIC_QUERY_TOKENS.contains(token)) {
-                tokens.add(token);
-            }
-        }
-        return tokens;
-    }
-
-    // -------------------------------------------------------------------------
-    // FTS query building
-    // -------------------------------------------------------------------------
-
-    private static String toFtsQueryNear(String topic, String resolvedAuthor) {
-        List<String> tokens = extractFtsTokens(topic, resolvedAuthor);
-        if (tokens.size() < 2) return "";
-        // Use first 3 tokens for NEAR (matching AND's 3-required-token cap in buildAndQuery)
-        List<String> nearTokens = tokens.size() >= 3 ? tokens.subList(0, 3) : tokens;
-        return "NEAR(" + String.join(" ", nearTokens) + ", " + NEAR_DISTANCE + ")";
-    }
-
-    private static String toFtsQuery(String topic, String resolvedAuthor) {
-        List<String> tokens = extractFtsTokens(topic, resolvedAuthor);
-        return tokens.isEmpty() ? "" : buildAndQuery(tokens);
-    }
-
-    private static String toFtsQueryOr(String topic, String resolvedAuthor) {
-        List<String> tokens = extractFtsTokens(topic, resolvedAuthor);
-        if (tokens.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < tokens.size(); i++) {
-            if (i > 0) sb.append(" OR ");
-            sb.append(tokens.get(i));
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Extracts FTS5 search tokens from the user's topic, applying the same Unicode
-     * normalization used throughout the pipeline (NFD decomposition, accent stripping,
-     * lowercase) so that diacritics are handled consistently in both FTS queries and
-     * post-retrieval content-term filtering.
-     */
-    private static List<String> extractFtsTokens(String topic, String resolvedAuthor) {
-        if (topic == null) return Collections.emptyList();
-        Set<String> authorTokens = buildAuthorTokenSet(resolvedAuthor);
-        List<String> tokens = new ArrayList<>();
-        // Use normalizeForMatch so á→a, é→e consistently with the rest of the pipeline
-        for (String token : normalizeForMatch(topic).split("\\s+")) {
-            if (token.isEmpty()) continue;
-            if (token.length() >= 3 && !NOISE_TOKENS.contains(token)
-                    && !authorTokens.contains(token)) {
-                tokens.add(token + "*");
-            }
-        }
-        return new ArrayList<>(new LinkedHashSet<>(tokens));
-    }
-
-    private static String buildAndQuery(List<String> tokens) {
-        if (tokens.size() <= 3) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < tokens.size(); i++) {
-                if (i > 0) sb.append(" AND ");
-                sb.append(tokens.get(i));
-            }
-            return sb.toString();
-        }
-        List<String> required = tokens.subList(0, 3);
-        List<String> optional = tokens.subList(3, tokens.size());
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < required.size(); i++) {
-            if (i > 0) sb.append(" AND ");
-            sb.append(required.get(i));
-        }
-        sb.append(" AND (");
-        for (int i = 0; i < optional.size(); i++) {
-            if (i > 0) sb.append(" OR ");
-            sb.append(optional.get(i));
-        }
-        sb.append(")");
-        return sb.toString();
-    }
-
-    private static Set<String> buildAuthorTokenSet(String resolvedAuthor) {
-        if (isEmpty(resolvedAuthor)) return Collections.emptySet();
-        Set<String> tokens = new HashSet<>();
-        for (String token : normalizeForMatch(resolvedAuthor).split("\\s+")) {
-            if (!token.isEmpty()) tokens.add(token);
-        }
-        return tokens;
-    }
-
-    // -------------------------------------------------------------------------
-    // Normalization utilities
-    // -------------------------------------------------------------------------
-
-    private static String normalizeForMatch(String value) {
-        if (value == null) return "";
-        String decomposed = Normalizer.normalize(value, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "");
-        return decomposed.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim();
-    }
 
     private static String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
-    }
-
-    private static String blankToFallback(String value, String fallback) {
-        return value == null || value.trim().isEmpty() ? fallback : value;
-    }
-
-    private static boolean isEmpty(String value) {
-        return value == null || value.trim().isEmpty();
     }
 
     private static void logCount(AppConfig appConfig, String label, int count) {

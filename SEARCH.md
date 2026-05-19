@@ -1,6 +1,6 @@
  # Search Logic — Bahá'í Research
 
-This document describes the full search pipeline in `LocalCorpusSearchService.java`. It is intended as a reference for understanding, testing, and improving search quality.
+This document describes the full search pipeline in `LocalCorpusSearchService.java` Part of this logic has been to a separate project BahaiSearchCommon in `SourceCore.java`. It is intended as a reference for understanding, testing, and improving search quality.
 
 ---
 

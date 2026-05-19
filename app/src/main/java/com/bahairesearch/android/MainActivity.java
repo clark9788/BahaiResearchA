@@ -4,7 +4,7 @@ import android.database.Cursor;
 import io.requery.android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
 
-import com.bahairesearch.android.model.QuoteResult;
+import com.bahairesearch.common.model.QuoteResult;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -22,7 +22,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bahairesearch.android.corpus.DatabaseHelper;
-import com.bahairesearch.android.model.ResearchReport;
+import com.bahairesearch.common.model.ResearchReport;
 import com.bahairesearch.android.research.ResearchService;
 
 import java.io.IOException;
