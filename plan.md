@@ -7,6 +7,12 @@
 | 1.0 | 1 | Core search, author/title spinners, FTS5 via bundled SQLite (requery 3.49.0), copy/copy-with-citation |
 | 1.1 | 2 | NEAR proximity search for 2-token queries; phrase LIKE skipped when NEAR fires; UHJ source priority removed; Javadoc added throughout |
 | 1.2 | 3 | Source viewer: long-press any result → "Open source" opens the full XHTML source file in a full-screen WebView scrolled to the exact paragraph anchor |
+| 1.2.1| 4 | Fix Webviewer timing issue on slower phones |
+| 1.3.0 | 5 | NEAR proximity extended from 2->3 tokens, Content term threshold lowered from 4 -> 3 characters -- noise tokens expanded, Categorical score boost (-50000) replaced with proportional X 1000 multiplier |
+| 1.4.0 | 6 | Move Bahai Search components to shared BahaiSearchCommon project so that changes will be shared with Windows version |
+| 1.5.0 | 7 | NEAR 3 word search now uses all 3 words NEAR. Query result check uses word to match original query* |
+| 1.6.0 | 8 | Added Bahai Sacred Writings xhtml file and updated corpus.db | 
+| 1.6.1 | 9 | DB version check: `DatabaseHelper` now re-copies `corpus.db` on first launch after any app update, ensuring corpus changes are always picked up |
 
 ---
 
