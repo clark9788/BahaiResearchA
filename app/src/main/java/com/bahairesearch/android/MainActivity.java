@@ -18,6 +18,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.bahairesearch.android.BuildConfig;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -56,6 +58,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        TextView tvTitle = findViewById(R.id.tvTitle);
+        tvTitle.setText("Bahá'í Research v" + BuildConfig.VERSION_NAME);
 
         spinnerAuthor = findViewById(R.id.spinnerAuthor);
         spinnerTitle  = findViewById(R.id.spinnerTitle);
