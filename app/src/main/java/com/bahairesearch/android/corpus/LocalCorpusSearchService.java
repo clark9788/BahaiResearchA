@@ -80,7 +80,7 @@ public final class LocalCorpusSearchService {
         List<String> topicFtsTokens = SearchCore.extractFtsTokens(topic, requiredAuthor);
         List<CorpusSearchHit> combinedPhraseHits = new ArrayList<>();
         boolean nearFired = hitsResult.effectiveQuery.startsWith("NEAR(");
-        if (topicFtsTokens.size() >= 2 && !nearFired) {
+        if (topicFtsTokens.size() >= 2) {
             combinedPhraseHits.addAll(fetchPhraseHits(db, topic, retrievalPoolSize,
                     requiredAuthor, explicitTitle, requestedBookTokens));
             logCount(appConfig, "phrase hits", combinedPhraseHits.size());
