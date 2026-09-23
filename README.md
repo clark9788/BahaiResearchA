@@ -10,6 +10,7 @@ An offline Android app for searching authoritative Bahá'í writings. Searches o
 - Proximity search (NEAR) for 2-word queries finds tightly co-occurring terms
 - Long press any result to copy the passage, copy with citation, or open the source file
 - Source viewer opens the full XHTML source scrolled to the exact paragraph
+- Two-finger pinch resizes the reading text in the results list and the source viewer, and the chosen size is remembered between launches
 - Works completely offline — no internet connection required
 
 ## Authors Included
@@ -28,6 +29,7 @@ An offline Android app for searching authoritative Bahá'í writings. Searches o
 3. Enter 2–4 key words for the most exact results
 4. Tap **Search**
 5. Long press any result to copy the passage, copy with citation, or open the source file
+6. Pinch with two fingers on the results or the open source to adjust the reading text size
 
 ## Installation
 
@@ -42,7 +44,7 @@ Requires Android 7.0 (API 24) or higher.
 
 ## Updating the Corpus
 
-The corpus database (`corpus.db`) is bundled in the APK and copied to internal storage on first launch. The app checks only whether the file exists — it does **not** detect a newer version of the database on app update. If the corpus is ever revised, users must uninstall and reinstall the app to receive the updated database. A version-check mechanism should be added before any corpus update is released.
+The corpus database (`corpus.db`) is bundled in the APK and copied to internal storage on first launch. The app records the `versionCode` of the copy and re-copies the bundled database on the first launch after any app update (whether or not the corpus changed), so a revised corpus in a new release is picked up automatically — no uninstall or reinstall required. Later launches on the same version reuse the existing copy without re-copying.
 
 ## Building from Source
 
@@ -52,6 +54,12 @@ Requirements: Android Studio, JDK 11
 2. Open the project in Android Studio
 3. Sync Gradle
 4. Build → Generate Signed Bundle / APK to produce a release APK
+
+## Release Notes
+
+### 1.8.0
+
+- Two-finger pinch changes the reading text size of both the results list and the source viewer, and the chosen size is remembered between launches.
 
 ## License
 

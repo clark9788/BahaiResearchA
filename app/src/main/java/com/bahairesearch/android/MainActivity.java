@@ -8,6 +8,7 @@ import com.bahairesearch.common.model.QuoteResult;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.AdapterView;
@@ -16,13 +17,16 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.bahairesearch.android.BuildConfig;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bahairesearch.android.config.TextScalePrefs;
 import com.bahairesearch.android.corpus.DatabaseHelper;
 import com.bahairesearch.common.model.ResearchReport;
 import com.bahairesearch.android.research.ResearchService;
@@ -47,7 +51,11 @@ public class MainActivity extends AppCompatActivity {
     private EditText     editQuery;
     private Button       btnSearch;
     private TextView     tvStatus;
+    private RecyclerView recycler;
     private ResultsAdapter adapter;
+
+    private PinchTextScaler textScaler;
+    private Toast           sizeToast;
 
     private SQLiteDatabase db;
     private final ResearchService  researchService = new ResearchService();
@@ -68,10 +76,13 @@ public class MainActivity extends AppCompatActivity {
         btnSearch     = findViewById(R.id.btnSearch);
         tvStatus      = findViewById(R.id.tvStatus);
 
-        RecyclerView recycler = findViewById(R.id.recyclerResults);
-        adapter = new ResultsAdapter(Collections.emptyList(), this::openSource);
+        float initialScale = TextScalePrefs.get(this);
+        recycler = findViewById(R.id.recyclerResults);
+        adapter = new ResultsAdapter(this, Collections.emptyList(), this::openSource);
+        adapter.setFontScale(initialScale, null);
         recycler.setLayoutManager(new LinearLayoutManager(this));
         recycler.setAdapter(adapter);
+        initPinchToScale(initialScale);
 
         btnSearch.setOnClickListener(v -> runSearch());
         editQuery.setOnEditorActionListener((v, actionId, event) -> {
@@ -91,6 +102,59 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         executor.shutdown();
         if (db != null && db.isOpen()) db.close();
+    }
+
+    // -------------------------------------------------------------------------
+    // Reading text size — two-finger pinch over the results
+    // -------------------------------------------------------------------------
+
+    private void initPinchToScale(float initialScale) {
+        textScaler = new PinchTextScaler(this, initialScale,
+                new PinchTextScaler.OnScaleListener() {
+                    @Override
+                    public void onScaleChanged(float scale) {
+                        applyTextScale(scale, false);
+                    }
+
+                    @Override
+                    public void onScaleFinished(float scale) {
+                        applyTextScale(scale, true);
+                    }
+                });
+
+        // Result cards consume ordinary touches, which bypasses a plain OnTouchListener on the
+        // RecyclerView. An OnItemTouchListener still sees every event; returning true once the
+        // pinch starts cancels the child gesture and keeps the list from scrolling underneath it.
+        recycler.addOnItemTouchListener(new RecyclerView.SimpleOnItemTouchListener() {
+            @Override
+            public boolean onInterceptTouchEvent(@NonNull RecyclerView rv, @NonNull MotionEvent e) {
+                textScaler.onTouchEvent(e);
+                return textScaler.isInProgress();
+            }
+
+            @Override
+            public void onTouchEvent(@NonNull RecyclerView rv, @NonNull MotionEvent e) {
+                textScaler.onTouchEvent(e);
+            }
+        });
+    }
+
+    private void applyTextScale(float scale, boolean persist) {
+        adapter.setFontScale(scale, recycler);
+        if (persist) {
+            TextScalePrefs.set(this, scale);
+            showTextSizeToast(scale);
+        }
+    }
+
+    private void showTextSizeToast(float scale) {
+        if (sizeToast != null) {
+            sizeToast.cancel();
+        }
+        sizeToast = Toast.makeText(this,
+                getString(R.string.text_size_percent, TextScalePrefs.toPercent(scale)),
+                Toast.LENGTH_SHORT);
+        sizeToast.show();
     }
 
     // -------------------------------------------------------------------------

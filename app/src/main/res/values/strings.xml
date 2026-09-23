@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">"Bahá\'í Research"</string>
+    <string name="text_size_percent">Text size: %1$d%%</string>
 </resources>

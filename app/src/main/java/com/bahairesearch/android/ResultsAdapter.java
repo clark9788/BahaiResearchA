@@ -3,6 +3,7 @@ package com.bahairesearch.android;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -13,6 +14,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bahairesearch.android.config.TextScalePrefs;
 import com.bahairesearch.common.model.QuoteResult;
 
 import java.util.List;
@@ -29,10 +31,16 @@ public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHold
 
     private List<QuoteResult> results;
     private final OnOpenSourceListener openSourceListener;
+    private final float baseQuotePx;
+    private final float baseAttributionPx;
+    private float fontScale = TextScalePrefs.DEFAULT_SCALE;
 
-    public ResultsAdapter(List<QuoteResult> results, OnOpenSourceListener openSourceListener) {
+    public ResultsAdapter(Context context, List<QuoteResult> results,
+                          OnOpenSourceListener openSourceListener) {
         this.results = results;
         this.openSourceListener = openSourceListener;
+        this.baseQuotePx = context.getResources().getDimension(R.dimen.quote_text_size);
+        this.baseAttributionPx = context.getResources().getDimension(R.dimen.attribution_text_size);
     }
 
     /**
@@ -41,6 +49,20 @@ public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHold
     public void setResults(List<QuoteResult> results) {
         this.results = results;
         notifyDataSetChanged();
+    }
+
+    /**
+     * Updates the reading text scale and re-applies it to the rows currently on screen.
+     */
+    public void setFontScale(float fontScale, RecyclerView recyclerView) {
+        this.fontScale = fontScale;
+        if (recyclerView == null) {
+            return;
+        }
+        for (int i = 0; i < recyclerView.getChildCount(); i++) {
+            View row = recyclerView.getChildAt(i);
+            applyTextSizes(row.findViewById(R.id.tvQuote), row.findViewById(R.id.tvAttribution));
+        }
     }
 
     @NonNull
@@ -56,6 +78,7 @@ public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHold
         QuoteResult result = results.get(position);
         holder.tvQuote.setText(result.quote());
         holder.tvAttribution.setText("— " + result.author() + " · " + result.bookTitle());
+        applyTextSizes(holder.tvQuote, holder.tvAttribution);
         holder.itemView.setOnLongClickListener(v -> {
             showCopyMenu(v, result);
             return true;
@@ -65,6 +88,11 @@ public class ResultsAdapter extends RecyclerView.Adapter<ResultsAdapter.ViewHold
     @Override
     public int getItemCount() {
         return results.size();
+    }
+
+    private void applyTextSizes(TextView quote, TextView attribution) {
+        quote.setTextSize(TypedValue.COMPLEX_UNIT_PX, baseQuotePx * fontScale);
+        attribution.setTextSize(TypedValue.COMPLEX_UNIT_PX, baseAttributionPx * fontScale);
     }
 
     private void showCopyMenu(View anchor, QuoteResult result) {
