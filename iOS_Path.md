@@ -3,7 +3,22 @@
 How to get an iPhone build. Written after reviewing [Convert_to_Flutter.md](Convert_to_Flutter.md);
 the recommendation there — rewrite the portfolio in Flutter — does not fit this codebase.
 
-## Decision
+## Status: deferred (2026-10-16)
+
+**Decision: no iPhone build for now. Stay with Java on Android and the desktop.**
+
+The app is a free charity project with no revenue. A native iOS app means a recurring
+US$99/year Apple Developer Program fee, a Mac for building and shipping, and an ongoing
+App Store review and OS-update cycle — for a platform where the writings are already
+reachable through the Bahá'í Reference Library in Safari.
+
+Java is also the deliberate choice for the existing apps: years of familiarity, plus the
+JVM ecosystem the project actually depends on (PDFBox, sqlite-jdbc, JUnit, the
+jlink/Inno Setup packaging). Nothing in the mobile or desktop app requires a rewrite.
+
+The analysis below is kept as the plan if that trade-off ever changes.
+
+## Recommendation if revisited
 
 **Build a native Swift iOS reader. Leave the desktop and Android apps in Java.**
 
@@ -70,6 +85,50 @@ Three implementations will drift. Make `SearchCoreTest` plus a small language-ne
 golden-query file (query → expected top passage IDs) mandatory on every platform. That
 catches divergence better than sharing Java source did.
 
+## Web/PWA option — feasibility and caveats
+
+The only genuinely zero-fee route to iPhone: a Progressive Web App — a website plus a
+manifest and service worker that the user adds to the home screen. No Apple fee, no Mac,
+buildable and hosted from Ubuntu.
+
+How the corpus would run:
+
+- Serve `corpus.db` once (~35 MB, much smaller gzipped) and query it with SQLite compiled
+  to WebAssembly, so the same FTS5 tables and ranking apply as on desktop and Android.
+- Cache the database for offline reuse (IndexedDB, or OPFS where available).
+- A small web UI: search box, filters, results list, and an iframe for the XHTML source.
+
+Caveats — all real, none fatal:
+
+- **FTS5 must be compiled into the WASM build.** The stock `sql.js` build has historically
+  shipped without it and silently degrades to a LIKE scan; packages such as
+  [fts5sqljs](https://www.npmjs.com/package/fts5sqljs) exist precisely for that reason.
+  Verify ranking parity before committing.
+- **iOS storage eviction.** Safari caps script-writable storage at roughly 7 days of use.
+  Home-screen web apps are carved out of that ([WebKit bug 209501](https://bugs.webkit.org/show_bug.cgi?id=209501)),
+  so offline data persists reliably only after the user installs it; the persistent-storage
+  API itself is still an open WebKit item ([bug 209563](https://bugs.webkit.org/show_bug.cgi?id=209563)).
+- **OPFS on iOS Safari is uneven** (`createSyncAccessHandle()` failures are reported), so
+  plan on loading the database into memory — fine at 35 MB, but memory pressure can reload
+  the tab.
+- **A 35 MB first load** over mobile data; ship a trimmed corpus or fetch on Wi-Fi.
+- **It is a third implementation** — JS/TS plus WASM tooling, a second UI, and another copy
+  of the search plumbing to keep in sync with Android and desktop.
+- **Hosting** is free but not unlimited: [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
+  is ~1 GB site size with a soft ~100 GB/month bandwidth.
+
+Verdict: viable and truly zero-cost, but it introduces the new language/ecosystem and the
+third codebase that the Java decision was meant to avoid. Ranked for this project's stated
+priorities: (1) skip iPhone, (2) PWA, (3) native Swift.
+
+## Other platforms (HarmonyOS)
+
+Same shape of problem, weaker case. HarmonyOS NEXT (HarmonyOS 5) dropped Android
+compatibility, so the existing APK does not run on it; a build there means another native
+stack (ArkTS/ArkUI, DevEco Studio on Windows/macOS) and distribution through Huawei
+AppGallery, aimed at a China-centric audience. For a free Bahá'í reading app the reach does
+not justify another codebase. Not pursued.
+
 ## Reality check
 
 - A Mac is required to build, sign, and ship to the App Store (used M1 mini, or a cloud
@@ -83,5 +142,5 @@ catches divergence better than sharing Java source did.
 
 Flutter and Compose Multiplatform both require a full Java→Dart/Kotlin rewrite of a
 working Android app, and abandon `BahaiSearchCommon`, to solve a desktop problem that does
-not exist here. A PWA is the only zero-Mac option, but a 35 MB offline corpus plus iOS
-Safari storage limits make it a poor primary target.
+not exist here. A PWA is the only zero-fee option — workable, but it adds a third
+implementation; see the feasibility section above.
