@@ -57,6 +57,10 @@ Requirements: Android Studio, JDK 11
 
 ## Release Notes
 
+### 1.9.0
+
+- Added new source Living the Life.
+
 ### 1.8.0
 
 - Two-finger pinch changes the reading text size of both the results list and the source viewer, and the chosen size is remembered between launches.
