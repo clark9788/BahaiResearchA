@@ -2,6 +2,45 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+// ---------------------------------------------------------------------------
+// Release signing
+//
+// Android Studio's "Generate Signed Bundle / APK" wizard signs the APK with a keystore you
+// pick in a dialog and records nothing in the project, so the build cannot be reproduced from
+// a terminal. These values come from keystore.properties (git-ignored) or, failing that, from
+// environment variables, so ./gradlew :app:assembleRelease produces a signed APK on its own.
+// ---------------------------------------------------------------------------
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+def signingValue = { String propertyKey, String environmentKey ->
+    def value = keystoreProperties.getProperty(propertyKey)
+    if (value == null || value.trim().isEmpty()) {
+        value = System.getenv(environmentKey)
+    }
+    (value == null || value.trim().isEmpty()) ? null : value.trim()
+}
+
+def signStoreFile = signingValue('storeFile', 'BAHIARESEARCH_KEYSTORE')
+def signStorePassword = signingValue('storePassword', 'BAHIARESEARCH_KEYSTORE_PASSWORD')
+def signKeyAlias = signingValue('keyAlias', 'BAHIARESEARCH_KEY_ALIAS')
+def signKeyPassword = signingValue('keyPassword', 'BAHIARESEARCH_KEY_PASSWORD')
+def hasSigningConfig = signStoreFile && signStorePassword && signKeyAlias && signKeyPassword
+
+if (hasSigningConfig) {
+    def expandedStoreFile = signStoreFile.startsWith('~/')
+            ? System.getProperty('user.home') + signStoreFile.substring(1)
+            : signStoreFile
+    def keystoreFile = file(expandedStoreFile)
+    if (!keystoreFile.isFile()) {
+        throw new GradleException("Signing keystore not found: ${keystoreFile}")
+    }
+    signStoreFile = keystoreFile.absolutePath
+}
+
 android {
     namespace 'com.bahairesearch.android'
     compileSdk {
@@ -18,8 +57,22 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasSigningConfig) {
+            release {
+                storeFile file(signStoreFile)
+                storePassword signStorePassword
+                keyAlias signKeyAlias
+                keyPassword signKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasSigningConfig) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -30,6 +83,17 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def releaseTasks = graph.allTasks.findAll {
+        it.name in ['assembleRelease', 'bundleRelease', 'packageReleaseBundle']
+    }
+    if (!releaseTasks.isEmpty() && !hasSigningConfig) {
+        logger.warn('WARNING: no release signing configured; the artifact will be UNSIGNED.')
+        logger.warn('Create keystore.properties (see BuildRelease.md) or set BAHIARESEARCH_KEYSTORE,')
+        logger.warn('BAHIARESEARCH_KEYSTORE_PASSWORD, BAHIARESEARCH_KEY_ALIAS, BAHIARESEARCH_KEY_PASSWORD.')
     }
 }
 

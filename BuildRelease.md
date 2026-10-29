@@ -55,61 +55,49 @@ keytool -export -rfc -alias upload -file upload_cert.pem -keystore upload-keysto
 
 ## 3. Configure signing in Gradle
 
-Create a local file named keystore.properties in the project root. This file should be kept out of version control.
+Signing is already wired up in `app/build.gradle`, so a terminal build signs the APK without
+Android Studio. Do **not** use Android Studio's Build > Generate Signed Bundle / APK wizard:
+it signs with a keystore chosen in a dialog and records nothing in the project, so the build
+cannot be reproduced from a terminal.
 
-Example keystore.properties:
+### Run the setup helper once per machine
+
+```bash
+./tools/configure-signing.sh
+```
+
+It asks for the keystore path (default `~/.credentials/bahairesearch.jks`), the store
+password, and the key alias, validates both against the keystore with `keytool`, then writes
+`keystore.properties` into the project root with mode 600. Nothing secret is committed; the
+keystore stays outside the repository.
+
+The resulting file looks like:
 
 ```properties
-storeFile=/absolute/path/to/upload-keystore.jks
+storeFile=/home/you/.credentials/bahairesearch.jks
 storePassword=yourStorePassword
 keyAlias=upload
 keyPassword=yourKeyPassword
 ```
 
-Add this to .gitignore if it is not already ignored:
+`keystore.properties`, `*.jks`, and `*.keystore` are listed in `.gitignore`.
 
-```gitignore
-keystore.properties
-*.jks
-```
+`app/build.gradle` reads `keystore.properties` and falls back to environment variables when a
+value is absent, so CI can supply secrets without the file:
 
-Then configure app/build.gradle with a release signing block.
+| keystore.properties | Environment variable |
+|---|---|
+| `storeFile` | `BAHIARESEARCH_KEYSTORE` |
+| `storePassword` | `BAHIARESEARCH_KEYSTORE_PASSWORD` |
+| `keyAlias` | `BAHIARESEARCH_KEY_ALIAS` |
+| `keyPassword` | `BAHIARESEARCH_KEY_PASSWORD` |
 
-Example configuration:
-
-```groovy
-def keystorePropertiesFile = rootProject.file("keystore.properties")
-def keystoreProperties = new Properties()
-
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-}
-
-android {
-    signingConfigs {
-        release {
-            if (keystorePropertiesFile.exists()) {
-                storeFile file(keystoreProperties['storeFile'])
-                storePassword keystoreProperties['storePassword']
-                keyAlias keystoreProperties['keyAlias']
-                keyPassword keystoreProperties['keyPassword']
-            }
-        }
-    }
-
-    buildTypes {
-        release {
-            signingConfig signingConfigs.release
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
-}
-```
+If none are set, release builds still run but produce `app-release-unsigned.apk`, and Gradle
+prints a warning naming the missing settings.
 
 Note:
-- This is the recommended secure approach for local builds.
-- Do not commit the keystore or its password values.
+- `storeFile` must be an absolute path (a leading `~/` is expanded).
+- Do not commit the keystore or any password value.
 
 ## 4. Build the release bundle from VS Code / terminal
 
@@ -117,18 +105,7 @@ If you are using VS Code instead of Android Studio, use a plain shell command wi
 
 ### Option A: use a keystore.properties file
 
-Create a local file at the project root called keystore.properties and keep it out of source control.
-
-Example:
-
-```properties
-storeFile=/home/your-user/.credentials/bahairesearch.jks
-storePassword=yourStorePassword
-keyAlias=upload
-keyPassword=yourKeyPassword
-```
-
-Then run:
+Run `./tools/configure-signing.sh` once (see section 3) and then:
 
 ```bash
 ./gradlew :app:bundleRelease
@@ -153,7 +130,7 @@ Then build:
 ./gradlew :app:bundleRelease
 ```
 
-If you use a custom Gradle signing setup that reads these environment variables, they will work in VS Code and in a CI environment.
+`app/build.gradle` reads these variables directly, so no file is needed on a CI machine.
 
 The output will be in:
 
@@ -173,6 +150,9 @@ APK output:
 app/build/outputs/apk/release/app-release.apk
 ```
 
+This is the location to publish from. The similar-looking `app/release/app-release.apk` was
+written by the Android Studio wizard and is not produced by a terminal build.
+
 ### Why not use $PROJECT_DIR$?
 
 `$PROJECT_DIR$` is an Android Studio / IntelliJ variable, not a system environment variable. It is resolved by the IDE, not by your shell. That means $PROJECT_DIR$ is convenient inside Android Studio configuration files, but it will not work reliably in VS Code, terminal builds, or CI automation.
@@ -185,6 +165,21 @@ For any reproducible release process, prefer one of these:
 ## 5. Validate the build before uploading
 
 Before releasing to Play, verify the release artifact works.
+
+First confirm it is signed with the expected key (an APK signed with a different key cannot
+upgrade an existing install):
+
+```bash
+"${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/36.1.0/apksigner verify --print-certs \
+    app/build/outputs/apk/release/app-release.apk
+```
+
+The certificate must match the previously released APK. The 1.9.0 release was signed with:
+
+```text
+Signer #1 certificate DN: CN=William Clark
+Signer #1 certificate SHA-256: bcb51538bb069017b6f4c557a5b11c53a046f62740371d3485eef78e92e309e7
+```
 
 Recommended checks:
 - Install the release APK on a real device.

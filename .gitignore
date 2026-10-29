@@ -15,3 +15,9 @@
 local.properties
 /release
 /app/release
+
+# Signing material must never be committed. The keystore itself lives outside the
+# project (~/.credentials/bahairesearch.jks); keystore.properties holds its password.
+keystore.properties
+*.jks
+*.keystore
