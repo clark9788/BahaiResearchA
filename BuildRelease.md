@@ -18,39 +18,55 @@ Recommended release metadata in app/build.gradle:
 - versionCode: increment for each release
 - versionName: human-readable public version
 
-## 2. Prepare the signing key
+## 2. Prepare the signing key — DONE
 
 Google Play requires an upload key to sign the release bundle. Do not commit the keystore or passwords to the repo.
 
-Generate a keystore:
+**Status: complete.** This project's upload keystore already exists and signed every release
+up to and including 1.9.0. Nothing in this section needs to be run again, and no new key
+should be generated: the certificate below is now the permanent identity of the app.
+
+| | |
+|---|---|
+| Keystore | `~/.credentials/bahairesearch.jks` (outside the repository) |
+| Alias | `upload` |
+| Key algorithm | RSA 2048 |
+| Certificate subject | `CN=William Clark` |
+| Certificate SHA-256 | `bcb51538bb069017b6f4c557a5b11c53a046f62740371d3485eef78e92e309e7` |
+| Signed releases | 1.9.0 (`versionCode 13`), verified as an APK Signature Scheme v2 signature |
+
+The certificate subject records the common name only. The organizational unit, organization,
+city, and state values are supplied only while a key is generated and are fixed inside the
+certificate at that moment; they cannot be added to an existing key. They are cosmetic and
+Play neither validates nor shows them to users, so there is no reason to re-create the keystore
+for them.
+
+Remaining responsibility for the maintainer:
+- Back this keystore up offline (a second copy on separate media is enough). If it is lost, the
+  app can never be updated under the same identity again.
+- Keep the password in a password manager.
+
+Reference: the commands that produced the existing key. Kept for documentation only — do not
+re-run them for this project. That command prompts for a store password, a key password, and an
+identity: first and last name plus optional organizational unit, organization, city, and
+state. Only the name was recorded in the certificate used here; the remaining fields were left
+blank.
 
 ```bash
 keytool -genkeypair -v \
-  -keystore upload-keystore.jks \
+  -keystore bahairesearch.jks \
   -alias upload \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000
 ```
 
-You will be prompted for:
-- keystore password
-- key password
-- first and last name
-- organizational unit
-- organization
-- city
-- state/country
-
-Important:
-- Store the keystore in a secure location.
-- Back it up offline.
-- Keep the passwords in a password manager or secure secret store.
-
-If Play Console asks for an upload certificate:
+When Play Console asks for an upload certificate (see section 7), export it from the existing
+keystore:
 
 ```bash
-keytool -export -rfc -alias upload -file upload_cert.pem -keystore upload-keystore.jks
+keytool -export -rfc -alias upload -file upload_cert.pem \
+  -keystore ~/.credentials/bahairesearch.jks
 ```
 
 ## 3. Configure signing in Gradle
@@ -450,8 +466,8 @@ This preserves local development while letting builds continue in environments w
 ## 16. Recommended next milestone
 
 The next milestone after this setup is:
-- Create keystore
-- Configure signing
+- ~~Create keystore~~ (done, see section 2)
+- Configure signing locally
 - Run bundleRelease
 - Upload to Internal Testing
 - Validate app on real devices
