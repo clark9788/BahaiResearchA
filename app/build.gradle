@@ -51,8 +51,8 @@ android {
         applicationId "com.bahairesearch.android"
         minSdk 24
         targetSdk 36
-        versionCode 13
-        versionName "1.9.0"
+        versionCode 14
+        versionName "1.10.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -98,7 +98,7 @@ gradle.taskGraph.whenReady { graph ->
 }
 
 dependencies {
-    implementation 'com.bahairesearch:bahai-search-common:1.1.0'
+    implementation 'com.bahairesearch:bahai-search-common:1.1.1'
     implementation libs.appcompat
     implementation libs.material
     implementation libs.recyclerview

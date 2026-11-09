@@ -21,3 +21,7 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
+
+# SQLite sidecars created when the bundled corpus is opened locally.
+/app/src/main/assets/corpus.db-shm
+/app/src/main/assets/corpus.db-wal
