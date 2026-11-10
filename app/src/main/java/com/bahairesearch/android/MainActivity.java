@@ -29,11 +29,13 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bahairesearch.android.config.TextScalePrefs;
 import com.bahairesearch.android.corpus.DatabaseHelper;
 import com.bahairesearch.common.model.ResearchReport;
+import com.bahairesearch.common.search.SearchCore;
 import com.bahairesearch.android.research.ResearchService;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -45,6 +47,11 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String ALL_AUTHORS = "All Authors";
     private static final String ALL_TITLES  = "All Titles";
+
+    /** Canonical display order for the six corpus authors. */
+    private static final List<String> AUTHOR_ORDER = java.util.Arrays.asList(
+            "Bahá'u'lláh", "Báb", "'Abdu'l-Bahá", "Shoghi Effendi",
+            "Universal House of Justice", "Compilation");
 
     private Spinner      spinnerAuthor;
     private Spinner      spinnerTitle;
@@ -93,7 +100,6 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
-        initAuthorSpinner();
         initDatabase();
     }
 
@@ -170,6 +176,7 @@ public class MainActivity extends AppCompatActivity {
                 SQLiteDatabase opened = DatabaseHelper.open(this);
                 mainHandler.post(() -> {
                     db = opened;
+                    initAuthorSpinner();
                     setUiEnabled(true);
                     tvStatus.setText("Ready — enter a search term above");
                 });
@@ -185,14 +192,29 @@ public class MainActivity extends AppCompatActivity {
     // -------------------------------------------------------------------------
 
     private void initAuthorSpinner() {
-        List<String> authors = List.of(
-                ALL_AUTHORS,
-                "Baha'u'llah",
-                "Bab",
-                "'Abdu'l-Baha",
-                "Shoghi Effendi",
-                "Universal House of Justice",
-                "Compilation");
+        List<String> authors = new ArrayList<>();
+        authors.add(ALL_AUTHORS);
+
+        if (db != null) {
+            List<String> storedAuthors = new ArrayList<>();
+            try (Cursor cursor = db.rawQuery(
+                    "SELECT DISTINCT author FROM documents "
+                            + "WHERE author IS NOT NULL AND trim(author) != ''", null)) {
+                while (cursor.moveToNext()) {
+                    String author = cursor.getString(0);
+                    if (author != null && !author.trim().isEmpty()) {
+                        storedAuthors.add(author.trim());
+                    }
+                }
+            }
+            storedAuthors.sort(Comparator
+                    .comparingInt((String author) -> {
+                        int index = AUTHOR_ORDER.indexOf(author);
+                        return index < 0 ? AUTHOR_ORDER.size() : index;
+                    })
+                    .thenComparing(SearchCore::normalizeForMatch));
+            authors.addAll(storedAuthors);
+        }
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this, android.R.layout.simple_spinner_item, authors);
@@ -213,6 +235,9 @@ public class MainActivity extends AppCompatActivity {
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
+
+        // Show "All Titles" before the first author change.
+        setTitleSpinner(null);
     }
 
     private void setTitleSpinner(String author) {
@@ -220,16 +245,20 @@ public class MainActivity extends AppCompatActivity {
         titles.add(ALL_TITLES);
 
         if (db != null && author != null) {
+            List<String> storedTitles = new ArrayList<>();
             String sql = "SELECT DISTINCT title FROM documents "
                     + "WHERE lower(author) = lower(?) "
-                    + "AND title IS NOT NULL AND trim(title) != '' "
-                    + "ORDER BY title";
+                    + "AND title IS NOT NULL AND trim(title) != ''";
             try (Cursor cursor = db.rawQuery(sql, new String[]{author})) {
                 while (cursor.moveToNext()) {
-                    String t = cursor.getString(0);
-                    if (t != null && !t.isBlank()) titles.add(t.trim());
+                    String title = cursor.getString(0);
+                    if (title != null && !title.trim().isEmpty()) {
+                        storedTitles.add(title.trim());
+                    }
                 }
             }
+            storedTitles.sort(Comparator.comparing(SearchCore::normalizeForMatch));
+            titles.addAll(storedTitles);
         }
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
