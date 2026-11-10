@@ -38,26 +38,23 @@ The `AppConfig` `minPassageLength` field that this item referred to no longer ex
 
 ---
 
-## 3. OR Fallback Is Blocked When a NEAR Query Was Attempted  — Open
+## 3. OR Fallback Is Blocked When a NEAR Query Was Attempted — ✅ Done
 
-The OR fallback only fires when `!nearAttempted` (line 253):
+The OR fallback originally fired only when `!nearAttempted`:
 
 ```java
 if (!nearAttempted) {
-    List<CorpusSearchHit> andHits = ...;
-    if (hits.isEmpty() && !isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
-        // OR fallback
-    }
+    ...
+    if (hits.isEmpty() && ...) { /* OR fallback */ }
 }
 ```
 
-If a NEAR query was attempted (i.e., the topic had exactly 2 tokens), even if NEAR returned zero hits *and* the AND supplement returned zero hits, the OR fallback is skipped entirely.
+If a NEAR query was attempted, even when NEAR returned zero hits and the AND supplement
+returned zero hits, the OR fallback was skipped and the user got zero results.
 
-**Considerations:**
-
-- For 2-token queries, if both NEAR and AND return nothing, the user gets zero results — even though an OR query might have found something relevant.
-- Consider restructuring so that OR still fires as a last resort when the NEAR+AND path produces nothing.
-- This may be an unintentional bug in the fallback logic path.
+**Resolution:** The OR fallback now runs whenever the merged NEAR/AND hits are empty,
+with or without a NEAR attempt. A query whose NEAR and AND searches both miss now
+broadens to OR and reports "exact search found nothing; broadened to: …".
 
 ---
 
@@ -131,10 +128,10 @@ Different query types assigned sentinel scores that created strict ranking tiers
 
 | Strategy      | Score Sentinels       | Rank Position |
 |---------------|-----------------------|---------------|
-| NEAR          | raw BM25 + (~ -50000) | Highest       |
-| Phrase LIKE   | -99999.0              | Second        |
-| Book-scoped   | -99998.0              | Third         |
-| AND / OR      | raw BM25 (~ -2 to -15)| Lowest        |
+| NEAR          | raw BM25 × 1000       | Highest       |
+| Phrase LIKE   | -99999.0              | Next          |
+| AND / OR      | raw BM25 (~ -2 to -15)| Next          |
+| Book-scoped   | +99998.0              | Last          |
 
 Because raw BM25 scores were typically in the range -2 to -15, and NEAR-boosted scores were around -50002 to -50015, a weak NEAR match would **always** outrank a strong AND match regardless of actual relevance.
 
@@ -147,7 +144,7 @@ Replaced the additive -50000 boost with a proportional ×1000 multiplier:
 // After:  score = bm25Score * 1000
 ```
 
-This means a strong BM25 match (e.g., -8) with proximity becomes -8000, while a weak match (e.g., -2) becomes -2000. The proximity signal is preserved but proportional to the underlying relevance. Phrase and book-scoped sentinels (-99999, -99998) still rank highest but are only relevant when no FTS5 results exist for those strategies.
+This means a strong BM25 match (e.g., -8) with proximity becomes -8000, while a weak match (e.g., -2) becomes -2000. The proximity signal is preserved but proportional to the underlying relevance. Phrase matches (-99999) still rank first; book-scoped fillers use +99998 and sort last, so they cannot displace real BM25 hits. The fillers stay in the list deliberately: a sparse result set is less useful for discovering better query terms, but they must not outrank real matches.
 
 ---
 
@@ -170,11 +167,11 @@ The service uses `io.requery.android.database.sqlite.SQLiteDatabase` (Requery's 
 |---|---|---|---|
 | 1. NEAR 2-token limit | ✅ Done | `2dff083` | `toFtsQueryNear()` extended for 3 tokens |
 | 2. minPassageLength unused | ✅ Already Clean | — | No leftover config — removed before qualityBand changes |
-| 3. OR fallback blocked | Open | — | Logic bug in fallback path |
+| 3. OR fallback blocked | ✅ Done | current | OR now runs after empty NEAR+AND |
 | 4. Phrase LIKE strict | ✅ Intentional Design | — | Exact quote guarantee — satisfies INE bypass |
 | 5. qualityBand constants | ✅ Done | `e3b0040` | Removed, replaced with boilerplate checks (90–15,000) |
 | 6. Content term min length | ✅ Done | current | Threshold lowered 4→3, noise set expanded |
-| 7. Categorical score boosts | ✅ Done | `2dff083` | -50000 additive → ×1000 proportional |
+| 7. Categorical score boosts | ✅ Done | `2dff083`, current | ×1000 NEAR boost; book-scoped +99998 sorts last |
 | 8. Thread safety | Open | — | Requires access pattern review |
 
-*Generated from algorithm review on 2026-05-12. Status updated 2026-05-14.*
+*Generated from algorithm review on 2026-05-12. Status updated 2026-11-10.*

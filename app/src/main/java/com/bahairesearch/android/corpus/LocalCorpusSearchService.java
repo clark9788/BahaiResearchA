@@ -168,7 +168,11 @@ public final class LocalCorpusSearchService {
                 + "LIMIT ?\n";
     }
 
-    private static String buildBookScopedSql(boolean authorScoped, boolean titleScoped) {
+    // Book-scoped hits intentionally fill out the result list so a sparse query still
+    // offers vocabulary to refine, but they are filler, not phrase matches. A positive
+    // sentinel sorts them after every BM25 score (negative) in rankForDisplay; a negative
+    // sentinel falls below PHRASE_SCORE_THRESHOLD and they outrank real hits.
+    static String buildBookScopedSql(boolean authorScoped, boolean titleScoped) {
         String authorClause = authorScoped ? "  AND lower(d.author) = lower(?)\n" : "";
         String titleClause  = titleScoped  ? "  AND lower(d.title)  = lower(?)\n" : "";
         return "SELECT\n"
@@ -177,7 +181,7 @@ public final class LocalCorpusSearchService {
                 + "    d.title,\n"
                 + "    p.locator,\n"
                 + "    d.canonical_url,\n"
-                + "    -99998.0 AS score\n"
+                + "    +99998.0 AS score\n"
                 + "FROM passages p\n"
                 + "JOIN documents d ON d.doc_id = p.doc_id\n"
                 + "WHERE 1=1\n"
@@ -234,15 +238,18 @@ public final class LocalCorpusSearchService {
             hits = executeHitsQuery(db, sql, ftsQuery,
                     authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
             logCount(appConfig, "AND hits", hits.size());
+        }
 
-            if (hits.isEmpty() && !SearchCore.isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
-                logCount(appConfig, "FtsQuery OR: " + orFtsQuery + " ->", 0);
-                hits = executeHitsQuery(db, sql, orFtsQuery,
-                        authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
-                logCount(appConfig, "OR hits", hits.size());
-                usedOrFallback = true;
-                usedQuery = orFtsQuery;
-            }
+        // OR is the last resort, including after a NEAR attempt whose AND supplement
+        // also came back empty. Previously this branch was inside !nearAttempted, so a
+        // failed NEAR query returned No Results instead of broadening.
+        if (hits.isEmpty() && !SearchCore.isEmpty(orFtsQuery) && !orFtsQuery.equals(ftsQuery)) {
+            logCount(appConfig, "FtsQuery OR: " + orFtsQuery + " ->", 0);
+            hits = executeHitsQuery(db, sql, orFtsQuery,
+                    authorScoped, requiredAuthor, titleScoped, explicitTitle, limit);
+            logCount(appConfig, "OR hits", hits.size());
+            usedOrFallback = true;
+            usedQuery = orFtsQuery;
         }
 
         List<CorpusSearchHit> limited = hits.stream()
