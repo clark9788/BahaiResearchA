@@ -10,6 +10,14 @@
 > advice. The Bahá'í Reference Library Terms of Use and any written guidance from the
 > Bahá'í World Centre or the National Spiritual Assembly govern.
 
+> **Post-review update — 2026-11-11:** The four derived XHTML editions (Framework for Action
+> and the three Messages volumes) have been removed from both apps. The corpus is now **91
+> authoritative Library works / 25,404 passages**. The Android release candidate is
+> **1.10.1 / `versionCode` 15** so `DatabaseHelper` recopies the new database. The
+> derived-edition legal gray area no longer applies; the offline full-corpus confirmation for
+> the 91 Library files remains. The review body below reflects the 95-work state at the time
+> of writing; the counts and derived-edition discussion are superseded by this update.
+
 ---
 
 ## 1. Executive summary
@@ -31,8 +39,7 @@ The app should **not** be submitted yet. The remaining work is small but importa
    content rating, screenshots, feature graphic, and updated listing text.
 5. The letter from the Department of the Secretariat is a general statement subject to the
    Terms, not a specific approval of the app or a licence for offline full-corpus
-   distribution or the four derived XHTML editions. Specific written confirmation for those
-   points is still prudent.
+   distribution. Specific written confirmation for that point is still prudent.
 
 **Verdict:** a free, attributed, non-commercial app that preserves the source and clearly
 disclaims affiliation is consistent with the plain terms. Close the notice/disclaimer and
@@ -46,10 +53,11 @@ scope-confirmation gaps before production.
 |---|---|---|---|
 | `BahaiSearchCommon` | 1.1.1 | 98 | Shared pure search logic |
 | `BahaiResearch` | 1.6.0 | 12 | Desktop reference / community tool |
-| `BahaiResearchA` | 1.10.0 (`versionCode` 14) | 2 | Android product |
+| `BahaiResearchA` | 1.10.1 (`versionCode` 15) | 2 | Android product |
 
-Corpus: **95 works / 33,980 passages**, all XHTML, zero `p.N` locators. The four former
-PDF/DOCX works are now derived XHTML editions with paragraph locators; all four resolve.
+Corpus: **91 works / 25,404 passages**, all XHTML, zero `p.N` locators. The four derived
+editions were removed on 2026-11-11; the app now bundles only the authoritative Library
+XHTML files.
 
 Android build facts:
 
@@ -57,10 +65,25 @@ Android build facts:
 - Android Lint: **0 errors, 29 warnings** (hardcoded text, dependency versions, RTL padding,
   autofill, `notifyDataSetChanged`).
 - No `INTERNET` permission. The app is fully offline; no analytics, ads, or AI.
-- Debug APK: ~42 MB; bundled `corpus.db`: 36 MB; XHTML assets: ~27 MB on disk.
-- `allowBackup="true"` with empty backup-rule samples; the 36 MB database is therefore a
+- Debug APK: ~33 MB; bundled `corpus.db`: 26 MB; XHTML assets: ~20 MB on disk.
+- `allowBackup="true"` with empty backup-rule samples; the 26 MB database is therefore a
   backup candidate unless excluded.
 - `keystore.properties` is absent, so release signing is not configured in the working tree.
+
+### Versioning decision (2026-11-11)
+
+- **Android: 1.10.1 / `versionCode` 15.** `versionCode` 14 was installed on the test phone.
+  `DatabaseHelper.copyIfNeeded()` only recopies the bundled database when the version code
+  changes, so shipping the new 91-work database under 14 would leave the old 95-work database
+  on the phone. 15 forces the refresh. If 14/1.10.0 was ever uploaded to Play — including
+  internal or closed testing — 15 is mandatory. Even if it was never uploaded, the installed
+  test build makes 15 the practical choice.
+- **Desktop: 1.6.0.** No desktop release was created, so 1.6.0 can remain the first release of
+  the 91-work corpus. If a 1.6.0 build was shared externally, bump to 1.6.1. Never reuse a
+  published version for a materially different artifact.
+- **General rule:** `versionCode` must strictly increase for every Play upload, including
+  internal testing. `versionName` is user-facing; use a patch bump for a correction (1.10.1)
+  or a minor bump if you want to signal a visible corpus change.
 
 ---
 
@@ -109,8 +132,7 @@ The screen should include:
 - app name and version;
 - the exact `Copyright © Bahá'í International Community` notice and the Library/terms links;
 - the “independent, free, non-commercial; not affiliated, sponsored, or endorsed” disclaimer;
-- author credits and the note that the four derived editions are transcriptions, not official
-  editions;
+- author credits and the source/edition attribution;
 - privacy statement (offline, no data collection), contact email, and corpus version/date.
 
 Make it reachable from the main screen, not buried in a long-press menu.
@@ -137,21 +159,20 @@ jarsigner -verify -verbose app/build/outputs/bundle/release/app-release.aab
 - Updated short/full description that does not imply official affiliation.
 - Support email and app-access declaration (no login).
 
-The current `README.md` says the app is not on the Play Store and cites 22,000 passages;
-both are stale.
+The README has been updated for the 91-work corpus; keep the Play listing consistent.
 
 #### 5. Terms and scope confirmation
 
 The 6 November 2026 letter is a general statement that Library material may be used subject
-to the Terms. It is not a specific approval or endorsement. The two areas it does not
-specifically address are offline full-corpus distribution and the four derived XHTML
-editions. Seek a short written confirmation from `termsofuse@bahai.org` and, as the letter
-suggests, the National Spiritual Assembly. Keep the letter and reply with the release
-records.
+to the Terms. It is not a specific approval or endorsement. The area it does not specifically
+address is offline full-corpus distribution. The four derived XHTML editions were removed on
+2026-11-11, so that question no longer applies. Seek a short written confirmation from
+`termsofuse@bahai.org` and, as the letter suggests, the National Spiritual Assembly. Keep the
+letter and reply with the release records.
 
 #### 6. Backup
 
-The 36 MB database is a poor Auto Backup candidate and may exceed the 25 MB limit. Set
+The 26 MB database is a poor Auto Backup candidate and may exceed the 25 MB limit. Set
 `allowBackup="false"` or exclude the `corpus.db` database in both `backup_rules.xml` and
 `data_extraction_rules.xml`. Align the privacy policy.
 
@@ -222,7 +243,8 @@ It does **not** say:
 
 - “Your app is approved.”
 - That offline bundling of the complete corpus is permitted.
-- That converting PDF/DOCX sources into derived XHTML editions is permitted.
+- That converting PDF/DOCX sources into derived XHTML editions would be permitted. (Those
+  editions have since been removed, so this is no longer part of the app.)
 - That the commercial-use permission is waived.
 - That the Bahá'í International Community endorses the app.
 
@@ -235,29 +257,26 @@ describe the app in the Play listing as “approved by the Bahá'í World Centre
 |---|---|---|
 | Copyright | Content is protected | App bundles the corpus |
 | Notice | “Copyright © Bahá'í International Community” + attribution to the source + individual author where named | Not yet in the app UI or listing; source footers carry per-work source-edition copyrights and Library links |
-| Intent | Must not misrepresent the original source | Derived-edition footers say “derived transcription, not an official edition”; About screen still needed |
-| Editing | A/V content may only be cropped/edited for size; text must not misrepresent intent | Four editions are structural transcriptions; defensible, but confirm scope |
+| Intent | Must not misrepresent the original source | The app now bundles the Library XHTML files unmodified; the derived-edition footers are gone. About screen still needed |
+| Editing | A/V content may only be cropped/edited for size; text must not misrepresent intent | No derived editions remain; the 91 files are used as downloaded. The transformation question no longer applies |
 | Commercial | Prior permission required | App is free, no ads/IAP — keep it that way |
 | Withdrawal | BIC may withdraw permission at any time; use must cease immediately | Be prepared to unpublish/update |
 | Personal initiative | Must be clear it is not associated with the institutions | In `BuildRelease.md`, not yet in the app/listing |
 | Questions | May turn to the National Spiritual Assembly | Recommended for the gray areas below |
 
-### 4.3 Gray areas needing specific confirmation
+### 4.3 Gray area needing specific confirmation
 
 1. **Offline full-corpus distribution.** The Terms permit use subject to conditions; they do
    not explicitly address shipping the complete Library corpus inside an app. The free,
    non-commercial nature helps, but confirm.
-2. **The four derived XHTML editions.** Converting PDF/DOCX sources, repairing hyphenation,
-   restoring accents, and adding structure is a transformation. The utility’s ground rule —
-   mechanical transformations only, no meaning changes — is the right position, but confirm
-   that the derived editions are acceptable. The source editions also carry their own
-   copyrights (Palabra 2017; NSA 1996/2009/2024), which the footers preserve.
+
+The four derived XHTML editions were removed on 2026-11-11, so the transformation question no
+longer applies.
 
 Ask `termsofuse@bahai.org` and the National Spiritual Assembly for a short written
 confirmation covering:
 
 - offline distribution of the complete corpus in a free app;
-- the four derived XHTML editions;
 - Google Play distribution;
 - confirmation that the About-screen notice and attribution satisfy the Terms.
 
@@ -288,9 +307,8 @@ Individual authors are credited where named in the source.
 ```
 
 Put it in the About/Legal screen, the Play listing/legal page, and the
-“Copy with citation” output. The four derived-edition footers should also carry it; the 91
-Library-downloaded files can remain as downloaded, with the app-level notice covering the
-collection.
+“Copy with citation” output. The 91 Library-downloaded files can remain as downloaded, with
+the app-level notice covering the collection.
 
 ---
 
@@ -305,10 +323,12 @@ collection.
 - [ ] Privacy policy hosted and entered in Play Console.
 - [ ] Data Safety, content rating, app access, ads declaration completed.
 - [ ] Screenshots, feature graphic, icon, short/full description ready.
-- [ ] `allowBackup`/backup rules exclude the 36 MB database, or backup is disabled.
+- [x] Four derived XHTML editions removed from both apps; corpus rebuilt from the 91
+      authoritative Library works.
+- [ ] `allowBackup`/backup rules exclude the 26 MB database, or backup is disabled.
 - [ ] Shipped DB has no absolute developer paths.
 - [ ] Device tests on API 24/29/33 and a low-end phone; phrase search performance checked.
-- [ ] Written scope confirmation for offline corpus/derived editions/Play distribution.
+- [ ] Written scope confirmation for offline corpus/Play distribution.
 - [ ] Letter and reply kept with release records.
 - [ ] README/docs updated (counts, Play availability, release notes, license/attribution).
 - [ ] Internal testing track and pre-launch report completed before production.
@@ -332,8 +352,9 @@ collection.
 
 ## 7. Evidence
 
-- Corpus: 95 documents, 33,980 passages, zero `p.N` locators; all four derived editions
-  resolve every locator.
+- Corpus: 91 documents, 25,404 passages, zero `p.N` locators. The four derived editions were
+  removed on 2026-11-11; the Android asset database and XHTML assets contain 91 works and no
+  missing source files.
 - Author mismatch (before the fix): `Baha'u'llah`/`Bab`/`'Abdu'l-Baha` returned 0 documents;
   accented forms returned 14/1/15.
 - Android Lint: 0 errors, 29 warnings; no `NewApi` errors. The author path no longer uses

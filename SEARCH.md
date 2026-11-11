@@ -6,7 +6,7 @@ This document describes the full search pipeline in `LocalCorpusSearchService.ja
 
 ## Overview
 
-The search pipeline runs entirely offline against `corpus.db`, a bundled SQLite database containing ~22,000 passages drawn from authoritative Bahá'í writings. The database has three relevant tables:
+The search pipeline runs entirely offline against `corpus.db`, a bundled SQLite database containing 25,404 passages drawn from authoritative Bahá'í writings. The database has three relevant tables:
 
 - `passages` — the raw text passages (`passage_id`, `doc_id`, `text_content`, `locator`)
 - `documents` — metadata per document (`doc_id`, `author`, `title`, `canonical_url`)

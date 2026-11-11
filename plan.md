@@ -20,9 +20,8 @@
 
 - **Search engine:** `LocalCorpusSearchService` — FTS5 NEAR → AND → OR tier ladder, phrase LIKE merge, boilerplate removal, quality-band ranking
 - **Database:** `corpus.db` bundled in assets, copied to internal storage on first launch via `DatabaseHelper`
-- **Source files:** 90 XHTML files bundled under `app/src/main/assets/curated/en/html/`, paths match `canonical_url` in corpus.db exactly
+- **Source files:** 91 XHTML files bundled under `app/src/main/assets/curated/en/html/`, paths match `canonical_url` in corpus.db exactly
 - **Source viewer:** `SourceViewerFragment` — full-screen DialogFragment, WebView loads `file:///android_asset/curated/en/html/<file>.xhtml#<locator>`
-- **Non-XHTML sources:** 4 UHJ texts (2 docx, 2 pdf) — "Open source" menu item not shown for these
 
 ---
 
@@ -83,10 +82,9 @@ version field needed; the app release integer is the single source of truth.
 - Subsequent launches same version: returns immediately, no I/O.
 - Uninstall/reinstall: SharedPreferences wiped, behaves like first install.
 
-### 2. Non-XHTML source files
-The four UHJ texts (muhj-1963-1986.docx, muhj-1986-2001.pdf, muhj-2001-2022.docx, framework-action.pdf)
-have no XHTML equivalent available. "Open source" is silently omitted for results from these works.
-Waiting on HTML versions from the Bahá'í World Centre.
+### 2. Non-XHTML source files (resolved)
+The four derived XHTML editions were removed on 2026-11-11. The app now bundles only the
+91 authoritative Library XHTML files; there are no non-XHTML sources.
 
 ### 3. `minPassageLength` not enforced
 `AppConfig.minPassageLength` (80) is defined but never applied during filtering.

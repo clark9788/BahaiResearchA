@@ -338,7 +338,7 @@ The user's deliberate use of Android's copy or share action is not the same as t
 
 ### 9.3 Copyright and source-material notice
 
-The bundled XHTML files, the four additional collections imported from PDF/DOCX, and `corpus.db` contain content obtained from the Bahá'í Reference Library. The four collections were handled separately only because equivalent HTML downloads were not available. Based on the terms supplied at `https://www.bahai.org/legal`, retain the source attribution and include this notice in the app's About/legal screen and on the privacy or legal page used for the listing:
+The bundled XHTML files and `corpus.db` contain content obtained from the Bahá'í Reference Library. Based on the terms supplied at `https://www.bahai.org/legal`, retain the source attribution and include this notice in the app's About/legal screen and on the privacy or legal page used for the listing:
 
 ```text
 Copyright © Bahá'í International Community
@@ -351,12 +351,12 @@ This application is an independent, free, non-commercial study and research tool
 Also verify before submission that:
 
 - Every bundled document retains its source title, author where named, and source URL or other source citation.
-- Search indexing, excerpts, HTML conversion, and displayed citations do not misrepresent the source or alter its meaning.
+- Search indexing, excerpts, and displayed citations do not misrepresent the source or alter its meaning.
 - No photographs, maps, audio, video, logos, or other third-party material is bundled without its own permission and attribution.
 - The app and listing do not imply endorsement by the Bahá'í International Community.
 - The publisher can stop distributing or update the app promptly if the rights holder withdraws permission.
 
-The supplied terms state that prior permission is required for commercial use. Since this app is intended to be free and non-commercial, that specific requirement may not apply, but non-commercial status does not waive the other terms. Because this app distributes a complete offline corpus rather than merely linking to it, request written confirmation from `termsofuse@bahai.org` that this form of redistribution is acceptable, including the four non-HTML collections, before production release and keep the response with the release records. Do not describe the corpus as public domain or open source unless the rights holder confirms that status.
+The supplied terms state that prior permission is required for commercial use. Since this app is intended to be free and non-commercial, that specific requirement may not apply, but non-commercial status does not waive the other terms. Because this app distributes a complete offline corpus rather than merely linking to it, request written confirmation from `termsofuse@bahai.org` that this form of redistribution is acceptable, before production release and keep the response with the release records. Do not describe the corpus as public domain or open source unless the rights holder confirms that status.
 
 ### 9.4 Other Play declarations
 

@@ -1,13 +1,13 @@
 # Bahá'í Research
 
-An offline Android app for searching authoritative Bahá'í writings. Searches over 22,000 passages from the sacred texts and returns the most relevant results ranked by relevance.
+An offline Android app for searching authoritative Bahá'í writings. Searches 25,404 passages from 91 works in the sacred texts and returns the most relevant results ranked by relevance.
 
 ## Features
 
-- Full-text search across ~22,000 passages
+- Full-text search across 25,404 passages
 - Filter by author and by individual work
 - Results ranked by relevance using FTS5
-- Proximity search (NEAR) for 2-word queries finds tightly co-occurring terms
+- Proximity search (NEAR) for 2–3 word queries finds tightly co-occurring terms
 - Long press any result to copy the passage, copy with citation, or open the source file
 - Source viewer opens the full XHTML source scrolled to the exact paragraph
 - Two-finger pinch resizes the reading text in the results list and the source viewer, and the chosen size is remembered between launches
@@ -33,7 +33,7 @@ An offline Android app for searching authoritative Bahá'í writings. Searches o
 
 ## Installation
 
-This app is distributed as an APK and is not available on the Google Play Store.
+The planned distribution channel is Google Play. A sideload APK is available for testing:
 
 1. Download the latest `app-release.apk` from the [Releases](../../releases) page
 2. On your Android device, open the downloaded file
@@ -57,6 +57,12 @@ Requirements: Android Studio, JDK 11
 
 ## Release Notes
 
+### 1.10.1 (first Google Play release)
+
+- Corpus is now 91 authoritative Library works / 25,404 passages. The four derived XHTML editions (Framework for Action and the three Messages volumes) were removed because their source PDF/DOCX files are not bundled with the app.
+- Author dropdown now loads accented author names from the database; title lists sort diacritic-insensitively.
+- Book-scoped filler results rank after real matches; failed NEAR/AND searches broaden to OR instead of returning no results.
+
 ### 1.9.0
 
 - Added new source Living the Life.
@@ -67,4 +73,4 @@ Requirements: Android Studio, JDK 11
 
 ## License
 
-For personal and community use. The Bahá'í writings corpus is sourced from the Bahá'í Reference Library.
+Free, non-commercial personal and community study tool. The corpus is sourced from the Bahá'í Reference Library and used subject to the terms at https://www.bahai.org/legal. This app is independent and not affiliated with, sponsored by, or endorsed by the Bahá'í International Community.

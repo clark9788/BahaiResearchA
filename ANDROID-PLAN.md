@@ -2,7 +2,7 @@
 
 ## Context
 This is a port of the Windows JavaFX desktop app (D:/AI-Python/BahaiResearch) to Android.
-The Windows app searches a local SQLite corpus of ~22,000 passages from authoritative Bahá'í texts
+The Windows app searches a local SQLite corpus of 25,404 passages from authoritative Bahá'í texts
 using FTS5 full-text search. A Gemini AI layer exists but is effectively unused (localOnlyMode=true).
 
 ## Key Decisions Made
@@ -66,8 +66,8 @@ The Windows DB location: `data/corpus/corpus.db`
 ## Source xhtml Files
 
 The anchor IDs stored in the DB (passages.locator) point into the local xhtml files.
-Copy `data/corpus/curated/en/html/` (19MB, 89 files) into `app/src/main/assets/html/`.
-Open in a WebView using: `file:///android_asset/html/filename.xhtml#anchorId`
+Copy `data/corpus/curated/en/html/` (20MB, 91 files) into `app/src/main/assets/curated/en/html/`.
+Open in a WebView using: `file:///android_asset/curated/en/html/filename.xhtml#anchorId`
 
 Alternative: the same anchor IDs work on live bahai.org pages — could link online instead.
 
