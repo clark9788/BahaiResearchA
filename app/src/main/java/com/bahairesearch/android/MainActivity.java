@@ -1,5 +1,6 @@
 package com.bahairesearch.android;
 
+import android.content.Intent;
 import android.database.Cursor;
 import io.requery.android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
@@ -15,6 +16,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.PopupMenu;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -26,11 +28,14 @@ import com.bahairesearch.android.BuildConfig;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bahairesearch.android.config.SearchPrefs;
 import com.bahairesearch.android.config.TextScalePrefs;
 import com.bahairesearch.android.corpus.DatabaseHelper;
 import com.bahairesearch.common.model.ResearchReport;
 import com.bahairesearch.common.search.SearchCore;
 import com.bahairesearch.android.research.ResearchService;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.slider.Slider;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -47,6 +52,10 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String ALL_AUTHORS = "All Authors";
     private static final String ALL_TITLES  = "All Titles";
+
+    private static final int MENU_SETTINGS = 1;
+    private static final int MENU_HELP     = 2;
+    private static final int MENU_ABOUT    = 3;
 
     /** Canonical display order for the six corpus authors. */
     private static final List<String> AUTHOR_ORDER = java.util.Arrays.asList(
@@ -100,6 +109,9 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
+        Button btnMenu = findViewById(R.id.btnMenu);
+        btnMenu.setOnClickListener(this::showInfoMenu);
+
         initDatabase();
     }
 
@@ -149,6 +161,9 @@ public class MainActivity extends AppCompatActivity {
         adapter.setFontScale(scale, recycler);
         if (persist) {
             TextScalePrefs.set(this, scale);
+            // Rebind every row with the final scale so rows cached off screen (including the
+            // copyright footer) cannot keep an older text size.
+            adapter.notifyDataSetChanged();
             showTextSizeToast(scale);
         }
     }
@@ -283,6 +298,7 @@ public class MainActivity extends AppCompatActivity {
         String rawTitle  = (String) spinnerTitle.getSelectedItem();
         String author = ALL_AUTHORS.equals(rawAuthor) ? null : rawAuthor;
         String title  = ALL_TITLES.equals(rawTitle)   ? null : rawTitle;
+        int maxQuotes = SearchPrefs.getMaxQuotes(this);
 
         setUiEnabled(false);
         tvStatus.setText("Searching…");
@@ -290,7 +306,7 @@ public class MainActivity extends AppCompatActivity {
 
         executor.execute(() -> {
             try {
-                ResearchReport report = researchService.search(db, query, author, title);
+                ResearchReport report = researchService.search(db, query, author, title, maxQuotes);
                 mainHandler.post(() -> {
                     adapter.setResults(report.quotes());
                     tvStatus.setText(report.summary());
@@ -323,6 +339,62 @@ public class MainActivity extends AppCompatActivity {
 
         SourceViewerFragment.newInstance(url)
                 .show(getSupportFragmentManager(), "source");
+    }
+
+    // -------------------------------------------------------------------------
+    // Information pages
+    // -------------------------------------------------------------------------
+
+    private void showInfoMenu(View anchor) {
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenu().add(0, MENU_SETTINGS, 0, R.string.menu_settings);
+        popup.getMenu().add(0, MENU_HELP, 1, R.string.menu_how_to_use);
+        popup.getMenu().add(0, MENU_ABOUT, 2, R.string.menu_about);
+        popup.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case MENU_SETTINGS:
+                    showMaxQuotesDialog();
+                    break;
+                case MENU_HELP:
+                    openInfo(InfoActivity.PAGE_HELP);
+                    break;
+                default:
+                    openInfo(InfoActivity.PAGE_ABOUT);
+                    break;
+            }
+            return true;
+        });
+        popup.show();
+    }
+
+    private void showMaxQuotesDialog() {
+        View content = getLayoutInflater().inflate(R.layout.dialog_max_quotes, null);
+        Slider slider = content.findViewById(R.id.sliderMaxQuotes);
+        TextView value = content.findViewById(R.id.tvMaxQuotesValue);
+
+        int current = SearchPrefs.getMaxQuotes(this);
+        slider.setValue(current);
+        value.setText(String.valueOf(current));
+        slider.addOnChangeListener((s, v, fromUser) ->
+                value.setText(String.valueOf(Math.round(v))));
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.settings_title)
+                .setView(content)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    int chosen = Math.round(slider.getValue());
+                    SearchPrefs.setMaxQuotes(this, chosen);
+                    Toast.makeText(this, getString(R.string.max_quotes_saved, chosen),
+                            Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void openInfo(String page) {
+        Intent intent = new Intent(this, InfoActivity.class);
+        intent.putExtra(InfoActivity.EXTRA_PAGE, page);
+        startActivity(intent);
     }
 
     // -------------------------------------------------------------------------

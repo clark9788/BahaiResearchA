@@ -7,15 +7,35 @@
     android:padding="16dp"
     android:fitsSystemWindows="true">
 
-    <TextView
-        android:id="@+id/tvTitle"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Bahá'í Research"
-        android:textSize="@dimen/title_text_size"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:paddingBottom="8dp" />
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="48dp"
+            android:paddingEnd="48dp"
+            android:text="Bahá'í Research"
+            android:textSize="@dimen/title_text_size"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <Button
+            android:id="@+id/btnMenu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="end|top"
+            android:text="⋮"
+            android:textSize="22sp"
+            android:contentDescription="@string/more_options"
+            style="?attr/borderlessButtonStyle"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp" />
+
+    </FrameLayout>
 
     <TextView
         android:layout_width="match_parent"
@@ -53,7 +73,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="1-4 key words for most exact"
+            android:hint="1-3 key words for most exact"
             android:imeOptions="actionSearch"
             android:inputType="text"
             android:maxLines="1"

@@ -20,7 +20,15 @@ public final class AppConfig {
      * Returns the default configuration used for a standard search session.
      */
     public static AppConfig defaults() {
-        return new AppConfig("No results found.", false, 12, 80);
+        return forSession(SearchLimits.DEFAULT_MAX_QUOTES);
+    }
+
+    /**
+     * Returns the configuration for a search session that honours the user's result limit.
+     */
+    public static AppConfig forSession(int maxQuotes) {
+        return new AppConfig("No results found.", false,
+                SearchLimits.clampMaxQuotes(maxQuotes), 80);
     }
 
     public String noResultsText() { return noResultsText; }

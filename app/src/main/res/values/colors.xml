@@ -7,4 +7,11 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Info pages (light theme) -->
+    <color name="info_background">#FFFFFFFF</color>
+    <color name="info_text">#FF1A1A1A</color>
+    <color name="info_muted">#FF5F6368</color>
+    <color name="info_link">#FF3700B3</color>
+    <color name="info_rule">#FFE0E0E0</color>
 </resources>

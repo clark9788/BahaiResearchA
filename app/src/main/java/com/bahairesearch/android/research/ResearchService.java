@@ -15,13 +15,14 @@ import java.util.List;
 public class ResearchService {
 
     /**
-     * Runs a corpus search for the given topic, optional author, and optional title filter.
+     * Runs a corpus search for the given topic, optional author and title filters, and result limit.
      */
-    public ResearchReport search(SQLiteDatabase db, String topic, String selectedAuthor, String selectedTitle) {
+    public ResearchReport search(SQLiteDatabase db, String topic, String selectedAuthor,
+                                 String selectedTitle, int maxQuotes) {
         if (topic == null || topic.trim().isEmpty()) {
             return new ResearchReport("Please enter a topic before searching.", Collections.emptyList());
         }
         return LocalCorpusSearchService.search(
-                db, topic.trim(), selectedAuthor, selectedTitle, AppConfig.defaults());
+                db, topic.trim(), selectedAuthor, selectedTitle, AppConfig.forSession(maxQuotes));
     }
 }
