@@ -11,6 +11,8 @@ An offline Android app for searching authoritative Bahá'í writings. Searches 2
 - Long press any result to copy the passage, copy with citation, or open the source file
 - Source viewer opens the full XHTML source scrolled to the exact paragraph
 - Two-finger pinch resizes the reading text in the results list and the source viewer, and the chosen size is remembered between launches
+- Settings to choose how many passages a search returns (3–50)
+- About & sources and How to use pages, with source attribution and the privacy statement
 - Works completely offline — no internet connection required
 
 ## Authors Included
@@ -28,12 +30,13 @@ An offline Android app for searching authoritative Bahá'í writings. Searches 2
 2. Optionally select a specific work from the second dropdown (enabled after choosing an author)
 3. Enter 2–4 key words for the most exact results
 4. Tap **Search**
-5. Long press any result to copy the passage, copy with citation, or open the source file
-6. Pinch with two fingers on the results or the open source to adjust the reading text size
+5. Use the top-right **More options** menu for **Settings** (passages per search, 3–50), **How to use**, and **About & sources**
+6. Long press any result to copy the passage, copy with citation, or open the source file
+7. Pinch with two fingers on the results or the open source to adjust the reading text size
 
 ## Installation
 
-The planned distribution channel is Google Play. A sideload APK is available for testing:
+The app is being evaluated through Google Play; a sideload APK is also available for testing:
 
 1. Download the latest `app-release.apk` from the [Releases](../../releases) page
 2. On your Android device, open the downloaded file
@@ -57,7 +60,16 @@ Requirements: Android Studio, JDK 11
 
 ## Release Notes
 
-### 1.10.1 (first Google Play release)
+### 1.11.0
+
+- Added **About & sources**, with the personal-initiative disclaimer, copyright notice, author/title attribution, offline/privacy statement, and Library terms links.
+- Added **How to use**, covering keyword search, NEAR/AND/OR behavior, author/title filters, the source viewer, and reading text size.
+- Added **Settings** for the number of passages returned per search (3–50).
+- Added a result footer with the copyright/attribution line.
+- Added the privacy policy page used for the Play listing.
+- Corpus remains 91 authoritative Library works / 25,404 passages.
+
+### 1.10.1
 
 - Corpus is now 91 authoritative Library works / 25,404 passages. The four derived XHTML editions (Framework for Action and the three Messages volumes) were removed because their source PDF/DOCX files are not bundled with the app.
 - Author dropdown now loads accented author names from the database; title lists sort diacritic-insensitively.
